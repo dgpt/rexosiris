@@ -1,5 +1,6 @@
 import type { Lane, Note, Section } from '../../shared/analyze'
 import type { Counts, Judgment } from '../../shared/types'
+import { heardTime } from '../audio'
 import { Effects } from './effects'
 import { FEVER_COMBO, judge, KEY_LANES, MISS_AFTER_SECONDS, type Offset, Scorecard } from './judge'
 import { drawHealth, drawNotes, type Frame, JUDGE_COLOR, laneCenter, LANES, layoutFor, type LiveNote } from './render'
@@ -104,8 +105,8 @@ export class Session {
     this.stop?.(true)
   }
 
-  private songTime() {
-    return this.audio.ctx.currentTime - this.startAt - this.options.offsetMs / 1000
+  private songTime(at?: number) {
+    return heardTime(this.audio.ctx, at) - this.startAt - this.options.offsetMs / 1000
   }
 
   private key(e: KeyboardEvent, finish: (quit: boolean) => void) {
@@ -116,7 +117,7 @@ export class Session {
     const lane = KEY_LANES[e.code]
     if (lane === undefined || e.repeat) return
     e.preventDefault()
-    this.press(lane)
+    this.press(lane, this.songTime(e.timeStamp))
   }
 
   private touch(e: TouchEvent) {
@@ -128,7 +129,7 @@ export class Session {
       const known = LANES.find((l) => l === lane)
       if (known !== undefined) {
         this.touches.set(t.identifier, known)
-        this.press(known)
+        this.press(known, this.songTime(e.timeStamp))
       }
     }
   }
@@ -149,9 +150,8 @@ export class Session {
     if (lane !== undefined) this.held[lane] = false
   }
 
-  private press(lane: Lane) {
+  private press(lane: Lane, t: number) {
     this.held[lane] = true
-    const t = this.songTime()
     const candidates = this.notes.slice(this.next).filter((n) => !n.hit && n.lane === lane && n.t - t <= MISS_AFTER_SECONDS)
     const target = candidates.toSorted((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0]
     if (target === undefined) return

@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { analyze, chartWithSections, type Analysis, type Difficulty, type Note, type Section } from '../src/shared/analyze'
+import { analyze, chartWithSections, type Analysis, type Difficulty, type Note } from '../src/shared/analyze'
 import { chartFromScore, type ScoreChart } from '../src/shared/score/chart'
 import { voicesOf } from '../src/shared/score/voices'
 import { type ProjectLink, readLinks } from './flp/link'
@@ -20,7 +20,6 @@ if (!isArrayOf(isTrack)(parsed)) throw new Error('scripts/tracks.json is not a t
 
 const perDifficulty = <T>(of: (d: Difficulty) => T): Record<Difficulty, T> => ({ easy: of('easy'), normal: of('normal'), hard: of('hard') })
 const round = (x: number, places: number) => Math.round(x * 10 ** places) / 10 ** places
-const voicePath = (sections: readonly Section[]) => sections.map((x) => x.voice).filter((v, i, all) => i === 0 || all[i - 1] !== v)
 
 type Charted = { readonly charts: Record<Difficulty, ScoreChart>; readonly bpm: number; readonly firstBeat: number; readonly source: 'project' | 'audio' }
 
@@ -54,7 +53,6 @@ function entryOf(track: TrackMeta, song: SongChart & { readonly source: Charted[
     bpm: song.bpm,
     duration: song.duration,
     notes: perDifficulty((d) => song.charts[d].length),
-    voices: voicePath(song.sections ?? []),
     holds: perDifficulty((d) => song.charts[d].filter((n) => (n.len ?? 0) > 0).length),
   }
 }
@@ -67,7 +65,7 @@ const index = parsed.map((track) => {
   writeFileSync(`public/charts/${track.slug}.json`, JSON.stringify(song))
   const entry = entryOf(track, song)
   const counts = Object.entries(entry.notes).map(([d, n]) => `${d}:${n}`).join(' ')
-  console.log(`${track.slug.padEnd(28)} ${song.bpm.toFixed(2).padStart(7)} bpm  ${counts}  ${Math.round(performance.now() - started)}ms  ${song.source.padEnd(7)} ${(entry.voices ?? []).join('>')}`)
+  console.log(`${track.slug.padEnd(28)} ${song.bpm.toFixed(2).padStart(7)} bpm  ${counts}  ${Math.round(performance.now() - started)}ms  ${song.source}`)
   return entry
 })
 writeFileSync('public/charts/index.json', JSON.stringify(index))

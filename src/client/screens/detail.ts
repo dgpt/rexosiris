@@ -3,16 +3,7 @@ import type { ChartIndexEntry, ScoreRow } from '../../shared/types'
 import { count, esc, fmtTime } from '../dom'
 import { state } from '../state'
 
-const PATH_SHOWN = 9
 const LEADERBOARD_ROWS = 10
-const VOICE_NAME: Readonly<Record<string, string>> = { air: 'cymbals' }
-
-function pathMarkup(voices: readonly string[] | undefined) {
-  if (voices === undefined || voices.length === 0) return ''
-  const shown = voices.slice(0, PATH_SHOWN).map((v) => `<span class="tag">${esc(VOICE_NAME[v] ?? v)}</span>`)
-  const more = voices.length > PATH_SHOWN ? '<span class="arrow">…</span>' : ''
-  return `<p class="path" title="The instrument the chart follows, phrase by phrase">${shown.join('<span class="arrow">→</span>')}${more}</p>`
-}
 
 function difficultyButton(song: ChartIndexEntry, d: Difficulty) {
   const on = d === state.picked.difficulty
@@ -36,7 +27,6 @@ export function detailMarkup(song: ChartIndexEntry) {
     <h2>${esc(song.title)}</h2>
     <p class="meta">${esc(song.artist)} · <i>${esc(song.album)}</i>${track}</p>
     <p class="meta">${Math.round(song.bpm)} bpm · ${fmtTime(song.duration)}</p>
-    ${pathMarkup(song.voices)}
     <div class="diffs" role="radiogroup" aria-label="Difficulty">${DIFFICULTIES.map((d) => difficultyButton(song, d)).join('')}</div>
     <p class="best">${bestMarkup(state.me?.bests[`${song.slug}/${state.picked.difficulty}`])}</p>
     <div class="actions"><button id="go" class="play">Play</button><button id="listen" class="ghost listen">Listen</button></div>

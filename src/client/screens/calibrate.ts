@@ -1,12 +1,13 @@
-import { audioContext, stopPreview } from '../audio'
+import { audioContext, heardTime, stopPreview } from '../audio'
 import { find, onClick, render } from '../dom'
 import { nav } from '../nav'
-import { saveSettings } from '../settings'
+import { currentSettings, saveSettings } from '../settings'
+import { metronome, type Metronome, PERIOD } from './metronome'
 
-const BPM = 100
-const TAPS = 16
-const WARMUP_BEATS = 2
-const PERIOD = 60 / BPM
+const TAPS = 20
+const WARMUP_BEATS = 3
+const STRAY_MS = 150
+const MAX_SPREAD_MS = 70
 
 export function median(xs: readonly number[]) {
   const sorted = xs.toSorted((a, b) => a - b)
@@ -15,87 +16,93 @@ export function median(xs: readonly number[]) {
   return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
 }
 
-function click(ctx: AudioContext, at: number, accent: boolean) {
-  const osc = ctx.createOscillator()
-  const gain = ctx.createGain()
-  osc.frequency.value = accent ? 1320 : 880
-  gain.gain.setValueAtTime(0.5, at)
-  gain.gain.exponentialRampToValueAtTime(0.001, at + 0.06)
-  osc.connect(gain).connect(ctx.destination)
-  osc.start(at)
-  osc.stop(at + 0.07)
+function spread(xs: readonly number[]) {
+  const sorted = xs.toSorted((a, b) => a - b)
+  const at = (q: number) => sorted[Math.floor(q * (sorted.length - 1))] ?? 0
+  return at(0.75) - at(0.25)
 }
 
-function pulseDot(ctx: AudioContext, dot: HTMLElement, startedAt: number, signal: AbortSignal) {
-  const frame = () => {
-    if (signal.aborted) return
-    const phase = (((ctx.currentTime - startedAt) / PERIOD) % 1 + 1) % 1
-    dot.style.transform = `scale(${1 + 0.4 * Math.max(0, 1 - phase * 4)})`
-    requestAnimationFrame(frame)
-  }
-  frame()
-}
+type Ui = { readonly dot: HTMLElement; readonly bar: HTMLElement; readonly hint: HTMLElement }
+type Taps = { readonly offset: number; readonly spread: number }
 
-type TapUi = { readonly dot: HTMLElement; readonly message: HTMLElement }
-
-function listenForTaps(ctx: AudioContext, ui: TapUi, signal: AbortSignal, done: (offset: number | null) => void) {
-  let startedAt = Number.NaN
+function listenForTaps(ctx: AudioContext, ui: Ui, signal: AbortSignal, done: (taps: Taps | null) => void) {
+  let clicks: Metronome | null = null
+  let lastBeat = -1
   const deltas: number[] = []
-  const onKey = (e: KeyboardEvent) => {
-    if (e.code !== 'Space') return
-    e.preventDefault()
-    if (Number.isNaN(startedAt)) {
-      startedAt = ctx.currentTime + 0.5
-      for (let i = 0; i < TAPS + 8; i++) click(ctx, startedAt + i * PERIOD, i % 4 === 0)
-      ui.message.textContent = 'Tap on every click…'
-      pulseDot(ctx, ui.dot, startedAt, signal)
-      return
-    }
-    const t = ctx.currentTime - startedAt
-    const beat = Math.round(t / PERIOD)
-    if (beat < WARMUP_BEATS) return
-    deltas.push((t - beat * PERIOD) * 1000)
-    ui.message.textContent = `${deltas.length} / ${TAPS}`
-    if (deltas.length >= TAPS) settle(Math.round(median(deltas)))
-  }
-  const settle = (offset: number | null) => {
+  const settle = (taps: Taps | null) => {
     removeEventListener('keydown', onKey)
-    done(offset)
+    clicks?.stop()
+    done(taps)
+  }
+  const tap = (at: number) => {
+    if (clicks === null) return
+    const t = heardTime(ctx, at) - clicks.startedAt
+    const beat = Math.round(t / PERIOD)
+    const ms = (t - beat * PERIOD) * 1000
+    if (beat < WARMUP_BEATS) return
+    const stray = Math.abs(ms) > STRAY_MS || beat === lastBeat
+    lastBeat = beat
+    ui.hint.textContent = stray ? 'That one missed the click. Tap once per click, right as you hear it.' : ''
+    if (stray) return
+    deltas.push(ms)
+    ui.bar.style.width = `${(deltas.length / TAPS) * 100}%`
+    if (deltas.length >= TAPS) settle({ offset: Math.round(median(deltas)), spread: spread(deltas) })
+  }
+  const onKey = (e: KeyboardEvent) => {
+    if (e.code !== 'Space' || e.repeat) return
+    e.preventDefault()
+    if (clicks === null) clicks = metronome(ctx, ui.dot, signal)
+    else tap(e.timeStamp)
   }
   signal.addEventListener('abort', () => { settle(null) })
   addEventListener('keydown', onKey)
 }
 
-const measure = (ctx: AudioContext, ui: TapUi, signal: AbortSignal) =>
-  new Promise<number | null>((resolve) => { listenForTaps(ctx, ui, signal, resolve) })
+const measure = (ctx: AudioContext, ui: Ui, signal: AbortSignal) =>
+  new Promise<Taps | null>((resolve) => { listenForTaps(ctx, ui, signal, resolve) })
+
+const signed = (ms: number) => (ms < 0 ? `${-ms} ms early` : `${ms} ms late`)
 
 function verdict(offset: number) {
-  if (Math.abs(offset) <= 10) return 'Right on the click. Nothing to fix.'
-  if (offset > 0) return `You tap ${offset} ms after the click, so notes will wait ${offset} ms for you.`
-  return `You tap ${-offset} ms before the click, so notes will come ${-offset} ms early to meet you.`
+  if (offset === 0) return 'Saved: you tap right on the click.'
+  const shift = offset > 0 ? `notes will wait ${offset} ms for you` : `notes will come ${-offset} ms early to meet you`
+  return `Saved: you tap ${signed(offset)}, so ${shift}.`
 }
 
 const intro = (welcome: boolean) => welcome
   ? `<h2>One thing first</h2><p>Every setup has its own lag between the music and your keys. Tap along to some clicks so the notes line up with yours.</p>`
   : '<h2>Calibrate</h2><p>Tap along to the clicks so the notes line up with your speakers and keyboard.</p>'
 
+const markup = (welcome: boolean, previous: number) => `<section class="card glass cal">${intro(welcome)}
+  <div class="beatdot" id="dot"></div>
+  <div class="calbar" aria-hidden="true"><i id="calbar"></i></div>
+  <p class="muted">Press <kbd>Space</kbd> to start the clicks, then tap <kbd>Space</kbd> on every click.</p>
+  <p id="calibrate-hint" class="hint" role="status"></p>
+  <p id="calibrate-result" class="result" role="status">${previous === 0 ? '' : `Last time: ${signed(previous)}.`}</p>
+  <div class="row"><button id="calibrate-again" class="ghost" hidden>Again</button><button id="calibrate-back" class="ghost">${welcome ? 'Skip' : 'Back'}</button></div></section>`
+
 export async function calibrate(options: { readonly welcome?: boolean } = {}) {
   const welcome = options.welcome === true
   stopPreview()
-  render('select', `<section class="card glass cal">${intro(welcome)}
-    <div class="beatdot" id="dot"></div><p id="calibrate-message" class="muted">Press <kbd>Space</kbd> to start, then tap <kbd>Space</kbd> on every click. ${TAPS} taps.</p>
-    <div class="row"><button id="calibrate-back" class="ghost">${welcome ? 'Skip' : 'Back'}</button></div></section>`)
+  render('calibrate', markup(welcome, currentSettings().offsetMs))
   const abort = new AbortController()
   onClick('#calibrate-back', () => {
     abort.abort()
     nav().select()
   })
+  onClick('#calibrate-again', () => calibrate(options))
   const ctx = audioContext()
   await ctx.resume()
-  const message = find('#calibrate-message', HTMLElement)
-  const offset = await measure(ctx, { dot: find('#dot', HTMLElement), message }, abort.signal)
-  if (offset === null) return
-  await saveSettings({ offsetMs: offset })
-  message.textContent = verdict(offset)
+  const ui: Ui = { dot: find('#dot', HTMLElement), bar: find('#calbar', HTMLElement), hint: find('#calibrate-hint', HTMLElement) }
+  const taps = await measure(ctx, ui, abort.signal)
+  if (taps === null) return
+  const result = find('#calibrate-result', HTMLElement)
+  find('#calibrate-again', HTMLButtonElement).hidden = false
+  if (taps.spread > MAX_SPREAD_MS) {
+    result.textContent = 'Those taps were too uneven to measure, so nothing was saved. Try again?'
+    return
+  }
+  await saveSettings({ offsetMs: taps.offset })
+  result.textContent = verdict(taps.offset)
   find('#calibrate-back', HTMLButtonElement).textContent = welcome ? 'Pick a song' : 'Done'
 }

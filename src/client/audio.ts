@@ -12,6 +12,13 @@ export const audioContext = () => {
   return context
 }
 
+export function heardTime(ctx: AudioContext, at: number = performance.now()) {
+  const stamp = ctx.getOutputTimestamp()
+  const contextTime = stamp.contextTime ?? ctx.currentTime - ctx.baseLatency
+  const performanceTime = stamp.performanceTime ?? performance.now()
+  return contextTime + (at - performanceTime) / 1000
+}
+
 export function loadSong(slug: string): Promise<AudioBuffer> {
   const cached = buffers.get(slug)
   if (cached !== undefined) return cached
