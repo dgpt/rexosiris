@@ -47,7 +47,7 @@ bun run typecheck
 
 ## How it was built, and what I'd do next
 
-I worked inside the 2-hour box (started 12:52 MDT, see `.timebox`). I chose the product and the music. The code was written by an AI coding agent (Claude) working under my direction, which is how I build day to day. Every flow was walked in a real Chrome before it shipped: sign up, play, results, leaderboard, calibration and upload. Those walks caught two real bugs. Notes still on screen when a song ended weren't counted as misses, so the server rejected the run. And the beat grid drifted with tempo error, which the regression step fixed.
+I worked inside the 2-hour box (started 12:52 MDT, see `.timebox`). I chose the product and the music. The code was written by an AI coding agent (Claude) working under my direction, which is how I build day to day. Sign-up, play, results, leaderboard and upload were walked in a real Chrome, on localhost and on production, before I called them done; calibration was only opened, not tapped through. Those walks caught two real bugs. Notes still on screen when a song ended weren't counted as misses, so the server rejected the run. And the beat grid drifted with tempo error, which the regression step fixed.
 
 Next, in order:
 - Hold notes.
