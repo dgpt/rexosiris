@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>REXOSIRIS. — a rhythm game</title>
+<title>REXOSIRIS.</title>
 <meta name="description" content="A rhythm game where every track is mine. Charts that listen to the music.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 29 16h-8v13H11V16H3z' fill='%23ff3d7f'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -114,6 +114,23 @@
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,10px)}}
 .quit{position:fixed;left:12px;top:16px;width:36px;height:36px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffc;font:400 22px/1 'Space Grotesk',system-ui,sans-serif;cursor:pointer;z-index:5;backdrop-filter:blur(6px)}
 .quit:hover,.quit:focus-visible{background:#fff2;color:#fff;outline:none;border-color:#fff8}
+.intro { padding:28px 28px 6px; display:grid; gap:10px; }
+.intro .title { font-size:clamp(56px, 11vw, 140px); letter-spacing:-0.02em; }
+.intro .lede { max-width:640px; margin:0; }
+.top { justify-content:space-between; } .top .brand { font-weight:700; letter-spacing:.02em; }
+.actions { display:flex; gap:10px; margin-top:4px; } .actions .play { flex:1; } .actions .listen { min-width:110px; }
+#auth-back { margin-top:8px; }
+.toast.ok { background:hsl(150 55% 18% / .92); border-color:hsl(150 70% 55% / .5); }
+body.listening { padding-bottom:92px; }
+.player { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); width:min(880px, calc(100vw - 24px)); display:grid; grid-template-columns:44px minmax(0,1.2fr) minmax(0,2fr) auto 36px; align-items:center; gap:14px; padding:10px 14px; z-index:20; }
+.player[hidden] { display:none; }
+.player .pp { width:44px; height:44px; border-radius:50%; padding:0; font-size:15px; }
+.player .np { display:grid; min-width:0; } .player .np b, .player .np span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .player .np span { color:var(--mut); font-size:12px; }
+.player .seek { margin:0; padding:0; height:4px; accent-color:hsl(var(--hue),95%,65%); }
+.player .clock { color:var(--mut); font-size:12px; font-variant-numeric:tabular-nums; }
+.player .close { width:36px; height:36px; padding:0; border-radius:50%; font-size:18px; }
+body[data-screen="play"] .player, body[data-screen="loading"] .player { display:none; }
+@media (max-width:640px) { .player { grid-template-columns:44px minmax(0,1fr) 36px; } .player .seek, .player .clock { display:none; } }
 </style>
 </head>
 <body>

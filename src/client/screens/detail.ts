@@ -1,7 +1,7 @@
 import { DIFFICULTIES, type Difficulty } from '../../shared/analyze'
 import type { ChartIndexEntry, ScoreRow } from '../../shared/types'
 import { count, esc, fmtTime } from '../dom'
-import { signedIn, state } from '../state'
+import { state } from '../state'
 
 const PATH_SHOWN = 9
 const LEADERBOARD_ROWS = 10
@@ -22,6 +22,7 @@ function difficultyButton(song: ChartIndexEntry, d: Difficulty) {
 }
 
 function bestMarkup(best: ScoreRow | undefined) {
+  if (state.me === null) return 'Play as a guest, or sign in to keep your scores.'
   if (best === undefined) return 'Not played on this difficulty yet.'
   return `Your best <b class="g-${best.grade}">${best.grade}</b> ${best.score.toLocaleString()} · combo ${best.maxCombo}`
 }
@@ -37,8 +38,8 @@ export function detailMarkup(song: ChartIndexEntry) {
     <p class="meta">${Math.round(song.bpm)} bpm · ${fmtTime(song.duration)}</p>
     ${pathMarkup(song.voices)}
     <div class="diffs" role="radiogroup" aria-label="Difficulty">${DIFFICULTIES.map((d) => difficultyButton(song, d)).join('')}</div>
-    <p class="best">${bestMarkup(signedIn().bests[`${song.slug}/${state.picked.difficulty}`])}</p>
-    <button id="go" class="play">Play</button>
+    <p class="best">${bestMarkup(state.me?.bests[`${song.slug}/${state.picked.difficulty}`])}</p>
+    <div class="actions"><button id="go" class="play">Play</button><button id="listen" class="ghost listen">Listen</button></div>
     ${KEYS_HELP}
     <h3>Leaderboard</h3><ol class="board" id="board"><li class="muted">Loading…</li></ol>`
 }

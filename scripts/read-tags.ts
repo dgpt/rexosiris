@@ -4,9 +4,14 @@ import { isRecord, isString } from '../src/shared/guards'
 import type { TrackMeta } from '../src/shared/types'
 
 const FOLDERS = ['/mnt/c/Users/Admin/Music/what is real', '/mnt/c/Users/Admin/Music/e']
+const REMIXES_DIR = '/mnt/c/Users/Admin/Documents/Image-Line/FL Studio/Projects/DEDZII - NIGHT TERROR (dxdy remiix)'
+const REMIXES = [`${REMIXES_DIR}/DEDZII - NIGHT TERROR (dxdy remiix).mp3`, `${REMIXES_DIR}/DEDZII - NIGHT TERROR (dxdy chillout remiix).flac`]
+const REMIX_ALBUM = 'remixes'
+
+const stem = (file: string) => basename(file).replace(/\.(flac|mp3)$/i, '')
 
 const slugOf = (file: string) =>
-  basename(file, '.flac').replace(/ \(mastered\)(_2)?/, '').toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replaceAll(/^-|-$/g, '')
+  stem(file).replace(/ \(mastered\)(_2)?/, '').toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replaceAll(/^-|-$/g, '')
 
 export const cleanTitle = (raw: string) =>
   raw
@@ -32,7 +37,7 @@ function trackOf(file: string, tags: Tags, shared: (key: string) => string): Tra
   return {
     file,
     slug: slugOf(file),
-    title: cleanTitle(first(tags['title'], basename(file, '.flac'))),
+    title: cleanTitle(first(tags['title'], stem(file))),
     artist: first(tags['album_artist'], shared('album_artist'), tags['artist'], shared('artist')),
     album: first(tags['album'], shared('album')),
     track: Number.isNaN(track) ? null : track,
@@ -46,6 +51,13 @@ async function folderTracks(folder: string) {
   return files.map((file, i) => trackOf(file, tags[i] ?? {}, shared))
 }
 
-const tracks = (await Promise.all(FOLDERS.map((f) => folderTracks(f)))).flat()
+async function remixTrack(file: string): Promise<TrackMeta> {
+  const tags = await tagsOf(file)
+  const artist = first(tags['artist'])
+  return { file, slug: slugOf(file), title: stem(file).replace(`${artist} - `, ''), artist, album: REMIX_ALBUM, track: null }
+}
+
+const albums = (await Promise.all(FOLDERS.map((f) => folderTracks(f)))).flat()
+const tracks = [...albums, ...(await Promise.all(REMIXES.map((f) => remixTrack(f))))]
 writeFileSync('scripts/tracks.json', `${JSON.stringify(tracks, null, 2)}\n`)
 console.log(tracks.map((t) => `${t.album} #${t.track ?? '-'} ${t.title} — ${t.artist} (${t.slug})`).join('\n'))

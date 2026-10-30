@@ -82,7 +82,7 @@ export function drawHud(f: Frame, card: Scorecard, hud: Hud) {
   if (hud.voice !== '') {
     text(g, 'FOLLOWING', { x: 20, y: layout.h - 52, font: `600 11px ${FONT}`, color: 'rgba(255,255,255,0.45)', align: 'left' })
     const grow = Math.max(0, 1 - hud.voiceAge / 400)
-    text(g, VOICE_LABEL[hud.voice] ?? hud.voice, { x: 20, y: layout.h - 28, font: `800 ${22 + grow * 10}px ${FONT}`, color: `hsl(${(f.hue + 160) % 360}, 95%, 70%)`, align: 'left' })
+    text(g, VOICE_LABEL[hud.voice] ?? hud.voice.toUpperCase(), { x: 20, y: layout.h - 28, font: `800 ${22 + grow * 10}px ${FONT}`, color: `hsl(${(f.hue + 160) % 360}, 95%, 70%)`, align: 'left' })
   }
   drawCenter(f, card, hud, mid)
 }

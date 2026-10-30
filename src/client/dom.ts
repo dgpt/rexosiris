@@ -26,14 +26,19 @@ export function onClick(selector: string, handler: () => unknown, root: ParentNo
   })
 }
 
+function toast(message: string, kind: 'error' | 'ok') {
+  const el = document.createElement('div')
+  el.className = `toast ${kind}`
+  el.setAttribute('role', kind === 'error' ? 'alert' : 'status')
+  el.textContent = message
+  document.body.append(el)
+  setTimeout(() => { el.remove() }, 4000)
+}
+
+export const notify = (message: string) => { toast(message, 'ok') }
+
 export function report(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
-  const toast = document.createElement('div')
-  toast.className = 'toast'
-  toast.setAttribute('role', 'alert')
-  toast.textContent = message
-  document.body.append(toast)
-  setTimeout(() => { toast.remove() }, 4000)
+  toast(error instanceof Error ? error.message : String(error), 'error')
 }
 
 export const setHue = (hue: number) => { document.documentElement.style.setProperty('--hue', String(hue)) }

@@ -7,4 +7,4 @@ import { select } from './select'
 
 registerScreens({ auth, select, play, start, custom, calibrate })
 
-export { auth, select }
+export { select }

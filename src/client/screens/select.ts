@@ -2,11 +2,11 @@ import type { ChartIndexEntry, ScoreRow } from '../../shared/types'
 import { api } from '../api'
 import { isDifficulty } from '../decode'
 import { loadSong, playPreview } from '../audio'
-import { esc, find, findAll, fmtTime, hueOf, onClick, render, report, setHue } from '../dom'
+import { count, esc, find, findAll, fmtTime, hueOf, onClick, render, report, setHue } from '../dom'
+import { listen, nowListening } from '../listen'
 import { nav } from '../nav'
 import { currentSettings, saveSettings } from '../settings'
-import { albums, albumTracks, pickedSong, signedIn, state } from '../state'
-import { ARTIST } from './auth'
+import { albums, albumTracks, ARTIST, pickedSong, state } from '../state'
 import { detailMarkup, leaderboardMarkup } from './detail'
 
 const RECENT_PLAYS = 8
@@ -20,37 +20,57 @@ function songCard(s: ChartIndexEntry, best: ScoreRow | undefined) {
     <span class="g g-${grade}">${grade}</span></button></li>`
 }
 
+const bestOf = (slug: string) => state.me?.bests[`${slug}/${state.picked.difficulty}`]
+
 function albumMarkup(album: string) {
   const tracks = albumTracks(album)
-  const me = signedIn()
-  return `<section class="album"><h2>${esc(album)}<small>${esc(tracks[0]?.artist ?? '')} · ${tracks.length} tracks</small></h2>
-    <ul>${tracks.map((s) => songCard(s, me.bests[`${s.slug}/${state.picked.difficulty}`])).join('')}</ul></section>`
+  return `<section class="album"><h2>${esc(album)}<small>${esc(tracks[0]?.artist ?? '')} · ${count(tracks.length, 'track')}</small></h2>
+    <ul>${tracks.map((s) => songCard(s, bestOf(s.slug))).join('')}</ul></section>`
 }
 
+const INTRO = `<section class="intro">
+  <h1 class="title">${ARTIST}<span class="dot">.</span></h1>
+  <p class="lede">Two albums and two remixes. Listen to any of them, or play them as a rhythm game. Most of the charts are built from the FL Studio projects the songs were made in.</p>
+</section>`
+
 function recentMarkup() {
-  const plays = signedIn().history.slice(0, RECENT_PLAYS)
-  if (plays.length === 0) return '<p class="muted">Nothing yet. Pick a song.</p>'
+  if (state.me === null) return ''
+  const plays = state.me.history.slice(0, RECENT_PLAYS)
+  if (plays.length === 0) return '<section class="recent"><h2>Recent plays</h2><p class="muted">Nothing yet. Pick a song.</p></section>'
   const titleOf = (slug: string) => state.songs.find((s) => s.slug === slug)?.title ?? slug
-  return `<ol>${plays.map((r) => `<li><span>${esc(titleOf(r.slug))}</span><span>${r.difficulty}</span><span class="g-${r.grade}">${r.grade}</span><span>${(r.accuracy * 100).toFixed(1)}%</span><time>${new Date(r.at).toLocaleString()}</time></li>`).join('')}</ol>`
+  const rows = plays.map((r) => `<li><span>${esc(titleOf(r.slug))}</span><span>${r.difficulty}</span><span class="g-${r.grade}">${r.grade}</span><span>${(r.accuracy * 100).toFixed(1)}%</span><time>${new Date(r.at).toLocaleString()}</time></li>`)
+  return `<section class="recent"><h2>Recent plays</h2><ol>${rows.join('')}</ol></section>`
+}
+
+function accountMarkup() {
+  if (state.me === null) return '<button id="in" class="ghost">Sign in</button>'
+  return `<span class="who">${esc(state.me.name)}</span><button id="out" class="ghost">Sign out</button>`
 }
 
 function headerMarkup() {
-  const me = signedIn()
   return `<header class="top">
-    <h1 class="brand">${ARTIST}<span class="dot">.</span></h1>
-    <nav><span class="who">${esc(me.name)}</span><button id="cal" class="ghost">Calibrate · ${me.settings.offsetMs} ms</button>
+    <span class="brand">${ARTIST}<span class="dot">.</span></span>
+    <nav><button id="cal" class="ghost">Calibrate · ${currentSettings().offsetMs} ms</button>
     <label class="speed">Speed <input id="speed" type="range" min="0.25" max="3" step="0.05" value="${currentSettings().speed}"><output>${currentSettings().speed}×</output></label>
     <label class="ghost upload">Chart your own track<input id="upload" type="file" accept="audio/*" hidden></label>
-    <button id="out" class="ghost">Sign out</button></nav>
+    ${accountMarkup()}</nav>
   </header>`
 }
 
-function wireHeader() {
+function wireAccount() {
+  if (state.me === null) {
+    onClick('#in', () => { nav().auth() })
+    return
+  }
   onClick('#out', async () => {
     await api.logout()
     state.me = null
-    nav().auth()
+    select()
   })
+}
+
+function wireHeader() {
+  wireAccount()
   onClick('#cal', () => nav().calibrate())
   const upload = find('#upload', HTMLInputElement)
   upload.addEventListener('change', () => {
@@ -67,21 +87,17 @@ function wireHeader() {
 async function fillLeaderboard(song: ChartIndexEntry) {
   const rows = await api.leaderboard(song.slug, state.picked.difficulty).catch(() => [])
   const board = document.querySelector('#board')
-  if (board !== null) board.innerHTML = leaderboardMarkup(rows, signedIn().name)
+  if (board !== null) board.innerHTML = leaderboardMarkup(rows, state.me?.name ?? '')
 }
 
 export function select(options: { preview?: boolean } = {}) {
-  if (state.me === null) {
-    nav().auth()
-    return
-  }
   const song = pickedSong()
   state.picked.slug = song.slug
   setHue(hueOf(song.slug))
-  render('select', `${headerMarkup()}
+  render('select', `${headerMarkup()}${INTRO}
     <main class="select"><div class="songs">${albums().map((a) => albumMarkup(a)).join('')}</div>
     <aside class="detail glass" id="detail" style="--h:${hueOf(song.slug)}">${detailMarkup(song)}</aside></main>
-    <section class="recent"><h2>Recent plays</h2>${recentMarkup()}</section>`)
+    ${recentMarkup()}`)
   wireHeader()
   for (const card of findAll('.song', HTMLButtonElement)) {
     card.addEventListener('click', () => {
@@ -97,9 +113,10 @@ export function select(options: { preview?: boolean } = {}) {
     })
   }
   onClick('#go', () => nav().start())
+  onClick('#listen', () => { listen(song) })
   void loadSong(song.slug).catch(report)
   void fillLeaderboard(song)
-  if (options.preview === true) playPreview(song.slug, song.duration)
+  if (options.preview === true && nowListening() === null) playPreview(song.slug, song.duration)
 }
 
 async function saveSpeed(speed: number) {

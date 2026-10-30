@@ -158,5 +158,21 @@
     "artist": "REXOSIRIS",
     "album": "e",
     "track": null
+  },
+  {
+    "file": "/mnt/c/Users/Admin/Documents/Image-Line/FL Studio/Projects/DEDZII - NIGHT TERROR (dxdy remiix)/DEDZII - NIGHT TERROR (dxdy remiix).mp3",
+    "slug": "dedzii-night-terror-dxdy-remiix",
+    "title": "NIGHT TERROR (dxdy remiix)",
+    "artist": "DEDZII",
+    "album": "remixes",
+    "track": null
+  },
+  {
+    "file": "/mnt/c/Users/Admin/Documents/Image-Line/FL Studio/Projects/DEDZII - NIGHT TERROR (dxdy remiix)/DEDZII - NIGHT TERROR (dxdy chillout remiix).flac",
+    "slug": "dedzii-night-terror-dxdy-chillout-remiix",
+    "title": "NIGHT TERROR (dxdy chillout remiix)",
+    "artist": "DEDZII",
+    "album": "remixes",
+    "track": null
   }
 ]

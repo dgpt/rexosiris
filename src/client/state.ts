@@ -1,6 +1,8 @@
 import type { Difficulty } from '../shared/analyze'
-import type { ChartIndexEntry, SongChart } from '../shared/types'
+import type { ChartIndexEntry, ScoreSubmission, SongChart } from '../shared/types'
 import type { Me } from './decode'
+
+export const ARTIST = 'REXOSIRIS'
 
 export type Picked = { slug: string; difficulty: Difficulty }
 export type CustomTrack = { readonly song: SongChart; readonly buffer: AudioBuffer }
@@ -10,7 +12,8 @@ export const state: {
   songs: readonly ChartIndexEntry[]
   picked: Picked
   custom: CustomTrack | null
-} = { me: null, songs: [], picked: { slug: '', difficulty: 'normal' }, custom: null }
+  pending: ScoreSubmission | null
+} = { me: null, songs: [], picked: { slug: '', difficulty: 'normal' }, custom: null, pending: null }
 
 export function signedIn(): Me {
   if (state.me === null) throw new Error('Sign in first')
