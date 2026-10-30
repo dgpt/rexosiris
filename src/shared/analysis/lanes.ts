@@ -1,14 +1,14 @@
 import type { Lane, Quant } from './model'
 
-const LANE_SPREAD: readonly (readonly Lane[])[] = [[1], [1, 2], [0, 1, 3], [0, 1, 2, 3]]
-const QUARTILES = [0.25, 0.5, 0.75]
+const LANE_SPREAD: readonly (readonly Lane[])[] = [[1], [0, 2], [0, 1, 2]]
+const TERTILES = [1 / 3, 2 / 3]
 const MIN_CLUSTER_GAP = 0.035
 const RELATIVE_CLUSTER_GAP = 0.12
-const MAX_CUTS = 3
+const MAX_CUTS = 2
 
-export const PARTNER: Readonly<Record<Lane, Lane>> = { 0: 1, 1: 0, 2: 3, 3: 2 }
-export const MIRROR: Readonly<Record<Lane, Lane>> = { 0: 3, 1: 2, 2: 1, 3: 0 }
-export const ACROSS: Readonly<Record<Lane, Lane>> = { 0: 2, 1: 3, 2: 0, 3: 1 }
+export const PARTNER: Readonly<Record<Lane, Lane>> = { 0: 1, 1: 2, 2: 1 }
+export const MIRROR: Readonly<Record<Lane, Lane>> = { 0: 2, 1: 0, 2: 0 }
+export const ACROSS: Readonly<Record<Lane, Lane>> = { 0: 2, 1: 2, 2: 0 }
 
 export function quantOf(slot: number): Quant {
   if (slot % 4 === 0) return 4
@@ -18,9 +18,9 @@ export function quantOf(slot: number): Quant {
 
 const laneAt = (lanes: readonly Lane[], index: number): Lane => lanes[Math.min(index, lanes.length - 1)] ?? 1
 
-function quartileLanes(sorted: readonly number[]) {
-  const cuts = QUARTILES.map((q) => sorted[Math.floor(q * (sorted.length - 1))] ?? 0)
-  return (v: number) => laneAt([0, 1, 2, 3], cuts.filter((c) => v > c).length)
+function tertileLanes(sorted: readonly number[]) {
+  const cuts = TERTILES.map((q) => sorted[Math.floor(q * (sorted.length - 1))] ?? 0)
+  return (v: number) => laneAt([0, 1, 2], cuts.filter((c) => v > c).length)
 }
 
 export function laneBins(values: readonly number[]): (v: number) => Lane {
@@ -35,7 +35,7 @@ export function laneBins(values: readonly number[]): (v: number) => Lane {
     .toSorted((x, y) => y.size - x.size)
     .slice(0, MAX_CUTS)
     .map((g) => g.at)
-  if (cuts.length === 0) return quartileLanes(sorted)
-  const lanes = LANE_SPREAD[cuts.length] ?? [0, 1, 2, 3]
+  if (cuts.length === 0) return tertileLanes(sorted)
+  const lanes = LANE_SPREAD[cuts.length] ?? [0, 1, 2]
   return (v) => laneAt(lanes, cuts.filter((c) => v > c).length)
 }

@@ -1,6 +1,6 @@
 import index from '../shared/chart-index.json'
 import { isArrayOf, isCounts, isDifficulty, isRecord, isRecordOf, isScoreRow, isString, isWhole, type Settings } from '../shared/guards'
-import { scoreOf, type ChartIndexEntry, type ScoreRow, type ScoreSubmission } from '../shared/types'
+import { scoreOf, type ScoreRow, type ScoreSubmission } from '../shared/types'
 import { CLEAR_COOKIE, hashPassword, isUser, newUser, sessionCookie, sessionUser, type User } from './session'
 
 export interface Store {
@@ -12,11 +12,11 @@ type Context = { readonly req: Request; readonly store: Store; readonly secret: 
 type PublicRoute = (ctx: Context, params: readonly string[]) => Response | Promise<Response>
 type PrivateRoute = (ctx: Context, user: User) => Promise<Response>
 
-const DEFAULT_SETTINGS: Settings = { offsetMs: 0, speed: 1 }
+const DEFAULT_SETTINGS: Settings = { offsetMs: 0, speed: 0.5 }
 const BOARD_SIZE = 20
 const HISTORY_SIZE = 50
 const HISTORY_SHOWN = 15
-const charts = new Map(index.map((c: ChartIndexEntry) => [c.slug, c]))
+const noteCounts = new Map(index.map((c) => [c.slug, c.notes]))
 
 const USERNAME = /^[a-zA-Z0-9_-]{3,20}$/
 const userKey = (name: string) => `user/${name.toLowerCase()}`
@@ -44,11 +44,11 @@ async function read<T>(store: Store, key: string, guard: (v: unknown) => v is T,
 export function validateSubmission(body: unknown): ScoreSubmission | string {
   if (!isRecord(body)) return 'unknown song'
   const { slug, difficulty, counts, maxCombo } = body
-  const entry = isString(slug) ? charts.get(slug) : undefined
-  if (entry === undefined || !isString(slug)) return 'unknown song'
+  const chartNotes = isString(slug) ? noteCounts.get(slug) : undefined
+  if (chartNotes === undefined || !isString(slug)) return 'unknown song'
   if (!isDifficulty(difficulty)) return 'unknown difficulty'
   if (!isCounts(counts)) return 'counts must be whole numbers'
-  const total = entry.notes[difficulty]
+  const total = chartNotes[difficulty]
   const sum = counts.perfect + counts.great + counts.good + counts.miss
   if (sum !== total) return `counts add up to ${sum}, but this chart has ${total} notes`
   if (!isWhole(maxCombo) || maxCombo > total - counts.miss) return 'max combo is impossible for these counts'
@@ -99,8 +99,8 @@ function settingsFrom(body: Record<string, unknown>, current: Settings): Setting
   const offsetMs = Number(body['offsetMs'] ?? current.offsetMs)
   const speed = Number(body['speed'] ?? current.speed)
   if (!Number.isFinite(offsetMs) || Math.abs(offsetMs) > 300) return 'Offset must be within ±300 ms'
-  if (!Number.isFinite(speed) || speed < 0.5 || speed > 3) return 'Speed must be 0.5–3'
-  return { offsetMs: Math.round(offsetMs), speed: Math.round(speed * 10) / 10 }
+  if (!Number.isFinite(speed) || speed < 0.25 || speed > 3) return 'Speed must be 0.25–3'
+  return { offsetMs: Math.round(offsetMs), speed: Math.round(speed * 20) / 20 }
 }
 
 const settings: PrivateRoute = async (ctx, user) => {
@@ -123,7 +123,7 @@ async function rankOnBoard(store: Store, row: ScoreRow, personalBest: boolean, b
 const submit: PrivateRoute = async (ctx, user) => {
   const sub = validateSubmission(await bodyOf(ctx.req))
   if (isString(sub)) return fail(400, sub)
-  const total = charts.get(sub.slug)?.notes[sub.difficulty] ?? 0
+  const total = noteCounts.get(sub.slug)?.[sub.difficulty] ?? 0
   const row: ScoreRow = { ...sub, user: user.name, ...scoreOf(sub.counts, total), at: new Date().toISOString() }
   const history = await read(ctx.store, historyKey(user.name), isRows, [])
   await ctx.store.set(historyKey(user.name), [row, ...history].slice(0, HISTORY_SIZE))

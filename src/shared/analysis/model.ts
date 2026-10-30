@@ -11,10 +11,10 @@ export const VOICES = [
 ] as const
 
 export type VoiceName = (typeof VOICES)[number]['name']
-export type Lane = 0 | 1 | 2 | 3
+export type Lane = 0 | 1 | 2
 export type Quant = 4 | 8 | 16
 export type Note = { readonly t: number; readonly lane: Lane; readonly q: Quant; readonly len?: number }
-export type Section = { readonly t: number; readonly voice: VoiceName; readonly energy: number }
+export type Section = { readonly t: number; readonly voice: string; readonly energy: number }
 export type Difficulty = 'easy' | 'normal' | 'hard'
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard']
 

@@ -1,8 +1,7 @@
-import { api } from '../api'
 import { audioContext, stopPreview } from '../audio'
 import { find, onClick, render } from '../dom'
 import { nav } from '../nav'
-import { signedIn, state } from '../state'
+import { saveSettings } from '../settings'
 
 const BPM = 100
 const TAPS = 16
@@ -48,7 +47,7 @@ function listenForTaps(ctx: AudioContext, ui: TapUi, signal: AbortSignal, done: 
     if (Number.isNaN(startedAt)) {
       startedAt = ctx.currentTime + 0.5
       for (let i = 0; i < TAPS + 8; i++) click(ctx, startedAt + i * PERIOD, i % 4 === 0)
-      ui.message.textContent = 'Tap along…'
+      ui.message.textContent = 'Tap on every click…'
       pulseDot(ctx, ui.dot, startedAt, signal)
       return
     }
@@ -70,12 +69,22 @@ function listenForTaps(ctx: AudioContext, ui: TapUi, signal: AbortSignal, done: 
 const measure = (ctx: AudioContext, ui: TapUi, signal: AbortSignal) =>
   new Promise<number | null>((resolve) => { listenForTaps(ctx, ui, signal, resolve) })
 
-export async function calibrate() {
+function verdict(offset: number) {
+  if (Math.abs(offset) <= 10) return 'Right on the click. Nothing to fix.'
+  if (offset > 0) return `You tap ${offset} ms after the click, so notes will wait ${offset} ms for you.`
+  return `You tap ${-offset} ms before the click, so notes will come ${-offset} ms early to meet you.`
+}
+
+const intro = (welcome: boolean) => welcome
+  ? `<h2>One thing first</h2><p>Every setup has its own lag between the music and your keys. Tap along to some clicks so the notes line up with yours.</p>`
+  : '<h2>Calibrate</h2><p>Tap along to the clicks so the notes line up with your speakers and keyboard.</p>'
+
+export async function calibrate(options: { readonly welcome?: boolean } = {}) {
+  const welcome = options.welcome === true
   stopPreview()
-  render('select', `<section class="card glass cal"><h2>Calibrate</h2>
-    <p>Tap <kbd>Space</kbd> on each click. After ${TAPS} taps your median offset is saved, so charts line up with your speakers and keyboard.</p>
-    <div class="beatdot" id="dot"></div><p id="calibrate-message" class="muted">Press Space to start.</p>
-    <div class="row"><button id="calibrate-back" class="ghost">Back</button></div></section>`)
+  render('select', `<section class="card glass cal">${intro(welcome)}
+    <div class="beatdot" id="dot"></div><p id="calibrate-message" class="muted">Press <kbd>Space</kbd> to start, then tap <kbd>Space</kbd> on every click. ${TAPS} taps.</p>
+    <div class="row"><button id="calibrate-back" class="ghost">${welcome ? 'Skip' : 'Back'}</button></div></section>`)
   const abort = new AbortController()
   onClick('#calibrate-back', () => {
     abort.abort()
@@ -86,6 +95,7 @@ export async function calibrate() {
   const message = find('#calibrate-message', HTMLElement)
   const offset = await measure(ctx, { dot: find('#dot', HTMLElement), message }, abort.signal)
   if (offset === null) return
-  state.me = { ...signedIn(), settings: await api.settings({ offsetMs: offset }) }
-  message.textContent = `Saved: ${offset} ms. Your charts now line up with what you hear.`
+  await saveSettings({ offsetMs: offset })
+  message.textContent = verdict(offset)
+  find('#calibrate-back', HTMLButtonElement).textContent = welcome ? 'Pick a song' : 'Done'
 }

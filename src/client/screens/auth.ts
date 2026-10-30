@@ -8,7 +8,7 @@ export const ARTIST = 'REXOSIRIS'
 
 const markup = (error: string) => `
   <section class="hero">
-    <div class="logo" aria-hidden="true"><span>←</span><span>↓</span><span>↑</span><span>→</span></div>
+    <div class="logo" aria-hidden="true"><span>←</span><span>↑</span><span>→</span></div>
     <h1 class="title">${ARTIST}<span class="dot">.</span></h1>
     <p class="lede">A rhythm game where every track is mine. Two albums, <i>what comes next?</i> and <i>e</i>, twenty songs, and charts that listen to the music and follow the kick, the snare, the lead, whatever is driving each phrase.</p>
     <form id="auth" class="card glass">
@@ -31,7 +31,8 @@ async function submit(form: HTMLFormElement, mode: string) {
   try {
     await (mode === 'signup' ? api.signup(username, password) : api.login(username, password))
     state.me = await api.me()
-    nav().select()
+    if (mode === 'signup') await nav().calibrate({ welcome: true })
+    else nav().select()
   } catch (error) {
     auth(error instanceof Error ? error.message : String(error))
   }

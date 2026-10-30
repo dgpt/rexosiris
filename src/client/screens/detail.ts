@@ -27,7 +27,7 @@ function bestMarkup(best: ScoreRow | undefined) {
 }
 
 const KEYS_HELP = `<p class="keys">Song select: <kbd>↑</kbd><kbd>↓</kbd> songs · <kbd>←</kbd><kbd>→</kbd> difficulty · <kbd>Enter</kbd> play<br>
-  In game: <kbd>←</kbd><kbd>↓</kbd><kbd>↑</kbd><kbd>→</kbd> or <kbd>D</kbd><kbd>F</kbd><kbd>J</kbd><kbd>K</kbd> · tap lanes on a phone · <kbd>Esc</kbd> quits</p>`
+  In game: <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd>, <kbd>A</kbd><kbd>W</kbd><kbd>D</kbd> or <kbd>J</kbd><kbd>I</kbd><kbd>L</kbd> · tap lanes on a phone · <kbd>Esc</kbd> quits</p>`
 
 export function detailMarkup(song: ChartIndexEntry) {
   const track = song.track === null ? '' : ` · track ${song.track}`

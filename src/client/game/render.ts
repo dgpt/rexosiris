@@ -17,8 +17,8 @@ export type Frame = {
   readonly pxPerSec: number
 }
 
-export const LANES: readonly Lane[] = [0, 1, 2, 3]
-export const LANE_ROTATION: Readonly<Record<Lane, number>> = { 0: -Math.PI / 2, 1: Math.PI, 2: 0, 3: Math.PI / 2 }
+export const LANES: readonly Lane[] = [0, 1, 2]
+export const LANE_ROTATION: Readonly<Record<Lane, number>> = { 0: -Math.PI / 2, 1: 0, 2: Math.PI / 2 }
 export const QUANT_COLOR: Readonly<Record<number, readonly [string, string]>> = { 4: ['#ff3d7f', '#ffb3cc'], 8: ['#3db8ff', '#b3e6ff'], 16: ['#ffd23d', '#fff0b3'] }
 export const JUDGE_COLOR: Readonly<Record<Judgment, string>> = { perfect: '#7dffb0', great: '#4fd1ff', good: '#ffb84f', miss: '#ff4f6d' }
 export const FONT = '"Space Grotesk", system-ui'
@@ -28,8 +28,8 @@ export const laneCenter = (layout: Layout, lane: number) => layout.x0 + lane * l
 export const noteY = (f: Frame, t: number) => f.layout.receptorY + (t - f.t) * f.pxPerSec
 
 export function layoutFor(w: number, h: number): Layout {
-  const laneW = Math.min(96, (w - 40) / 4.4)
-  return { x0: w / 2 - laneW * 2, laneW, receptorY: Math.min(140, h * 0.16), w, h }
+  const laneW = Math.min(120, (w - 40) / 3.3)
+  return { x0: w / 2 - laneW * 1.5, laneW, receptorY: Math.min(140, h * 0.16), w, h }
 }
 
 function arrowPath(g: CanvasRenderingContext2D, r: number) {

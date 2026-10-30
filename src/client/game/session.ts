@@ -32,8 +32,8 @@ export class Session {
   private readonly effects = new Effects()
   private readonly stars = makeStars()
   private readonly notes: LiveNote[]
-  private readonly held = [false, false, false, false]
-  private readonly active: (LiveNote | null)[] = [null, null, null, null]
+  private readonly held = [false, false, false]
+  private readonly active: (LiveNote | null)[] = [null, null, null]
   private readonly touches = new Map<number, Lane>()
   private readonly spectrum: Uint8Array<ArrayBuffer>
   private readonly analyser: AnalyserNode

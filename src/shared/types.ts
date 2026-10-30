@@ -23,6 +23,7 @@ export type ChartIndexEntry = {
   notes: Record<Difficulty, number>
   voices?: string[]
   holds?: Record<Difficulty, number>
+  source?: 'project' | 'audio'
 }
 
 export type Judgment = 'perfect' | 'great' | 'good' | 'miss'

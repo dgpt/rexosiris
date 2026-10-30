@@ -1,11 +1,11 @@
-import { DIFFICULTIES } from '../../shared/analyze'
 import type { ChartIndexEntry, ScoreRow } from '../../shared/types'
 import { api } from '../api'
 import { isDifficulty } from '../decode'
 import { loadSong, playPreview } from '../audio'
 import { esc, find, findAll, fmtTime, hueOf, onClick, render, report, setHue } from '../dom'
 import { nav } from '../nav'
-import { albums, albumTracks, pickedSong, playOrder, signedIn, state } from '../state'
+import { currentSettings, saveSettings } from '../settings'
+import { albums, albumTracks, pickedSong, signedIn, state } from '../state'
 import { ARTIST } from './auth'
 import { detailMarkup, leaderboardMarkup } from './detail'
 
@@ -39,7 +39,7 @@ function headerMarkup() {
   return `<header class="top">
     <h1 class="brand">${ARTIST}<span class="dot">.</span></h1>
     <nav><span class="who">${esc(me.name)}</span><button id="cal" class="ghost">Calibrate · ${me.settings.offsetMs} ms</button>
-    <label class="speed">Speed <input id="speed" type="range" min="0.5" max="3" step="0.1" value="${me.settings.speed}"><output>${me.settings.speed}×</output></label>
+    <label class="speed">Speed <input id="speed" type="range" min="0.25" max="3" step="0.05" value="${currentSettings().speed}"><output>${currentSettings().speed}×</output></label>
     <label class="ghost upload">Chart your own track<input id="upload" type="file" accept="audio/*" hidden></label>
     <button id="out" class="ghost">Sign out</button></nav>
   </header>`
@@ -103,39 +103,5 @@ export function select(options: { preview?: boolean } = {}) {
 }
 
 async function saveSpeed(speed: number) {
-  const settings = await api.settings({ speed })
-  state.me = { ...signedIn(), settings }
-}
-
-const typing = (target: EventTarget | null) => target instanceof HTMLInputElement || target instanceof HTMLButtonElement
-
-function stepSong(direction: 1 | -1) {
-  const order = playOrder()
-  const at = order.findIndex((s) => s.slug === state.picked.slug)
-  const next = order[(at + direction + order.length) % order.length]
-  if (next !== undefined) state.picked.slug = next.slug
-  nav().select({ preview: true })
-  document.querySelector('.song.on')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-}
-
-function stepDifficulty(direction: 1 | -1) {
-  const at = DIFFICULTIES.indexOf(state.picked.difficulty)
-  state.picked.difficulty = DIFFICULTIES[Math.min(DIFFICULTIES.length - 1, Math.max(0, at + direction))] ?? state.picked.difficulty
-  nav().select()
-}
-
-const SELECT_KEYS: Readonly<Record<string, () => unknown>> = {
-  ArrowDown: () => { stepSong(1) },
-  ArrowUp: () => { stepSong(-1) },
-  ArrowRight: () => { stepDifficulty(1) },
-  ArrowLeft: () => { stepDifficulty(-1) },
-  Enter: () => nav().start(),
-}
-
-export function selectKeys(e: KeyboardEvent) {
-  if (document.body.dataset['screen'] !== 'select' || state.me === null || document.querySelector('#detail') === null) return
-  const action = SELECT_KEYS[e.key]
-  if (action === undefined || (e.key === 'Enter' && typing(e.target))) return
-  e.preventDefault()
-  void Promise.resolve(action()).catch(report)
+  await saveSettings({ speed })
 }

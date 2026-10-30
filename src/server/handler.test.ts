@@ -34,7 +34,7 @@ describe('accounts', () => {
     const c = client()
     expect((await c.req('POST', '/signup', { username: 'spencer', password: 'hunter222' })).status).toBe(201)
     const me = await c.req('GET', '/me')
-    expect(me.body).toMatchObject({ name: 'spencer', settings: { offsetMs: 0, speed: 1 } })
+    expect(me.body).toMatchObject({ name: 'spencer', settings: { offsetMs: 0, speed: 0.5 } })
   })
 
   test('a taken name is refused, case-insensitively', async () => {

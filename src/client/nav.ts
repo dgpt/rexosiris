@@ -6,7 +6,7 @@ export type Screens = {
   readonly play: (song: SongChart, buffer: AudioBuffer, ranked: boolean) => Promise<void>
   readonly start: () => Promise<void>
   readonly custom: (file: File) => Promise<void>
-  readonly calibrate: () => Promise<void>
+  readonly calibrate: (options?: { readonly welcome?: boolean }) => Promise<void>
 }
 
 let screens: Screens | null = null

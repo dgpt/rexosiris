@@ -1,15 +1,9 @@
 import { api } from './api'
 import { decode, isIndex } from './decode'
 import { report } from './dom'
-import { registerScreens } from './nav'
-import { auth } from './screens/auth'
-import { calibrate } from './screens/calibrate'
-import { custom } from './screens/custom'
-import { play, start } from './screens/play'
-import { select, selectKeys } from './screens/select'
+import { auth, select } from './screens'
+import { selectKeys } from './screens/select-keys'
 import { state } from './state'
-
-registerScreens({ auth, select, play, start, custom, calibrate })
 
 document.addEventListener('keydown', selectKeys)
 

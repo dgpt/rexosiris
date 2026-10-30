@@ -3,3 +3,4 @@ node_modules
 .netlify
 *.f32
 .shots
+scripts/projects.local.json

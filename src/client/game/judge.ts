@@ -3,13 +3,14 @@ import { type Counts, type Judgment, WINDOWS_MS } from '../../shared/types'
 
 export const KEY_LANES: Readonly<Record<string, Lane>> = {
   ArrowLeft: 0,
-  ArrowDown: 1,
-  ArrowUp: 2,
-  ArrowRight: 3,
-  KeyD: 0,
-  KeyF: 1,
-  KeyJ: 2,
-  KeyK: 3,
+  ArrowUp: 1,
+  ArrowRight: 2,
+  KeyA: 0,
+  KeyW: 1,
+  KeyD: 2,
+  KeyJ: 0,
+  KeyI: 1,
+  KeyL: 2,
 }
 
 export const MISS_AFTER_SECONDS = WINDOWS_MS.good / 1000

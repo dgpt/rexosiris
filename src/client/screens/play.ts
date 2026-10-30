@@ -5,7 +5,8 @@ import { decode, isSongChart } from '../decode'
 import { esc, find, hueOf, onClick, render, report, setHue } from '../dom'
 import { type GameResult, Session } from '../game/session'
 import { nav } from '../nav'
-import { pickedSong, signedIn, state } from '../state'
+import { currentSettings } from '../settings'
+import { pickedSong, state } from '../state'
 import { drawTiming, meanOffset } from './timing'
 
 const CALIBRATE_HINT_MS = 18
@@ -23,7 +24,7 @@ export async function play(song: SongChart, buffer: AudioBuffer, ranked: boolean
   await ctx.resume()
   render('play', '<canvas id="stage" class="stage" aria-label="Playfield"></canvas><button type="button" class="quit" aria-label="Quit this song">×</button>')
   const hue = hueOf(song.slug === 'custom' ? song.title : song.slug)
-  const { settings } = signedIn()
+  const settings = currentSettings()
   const session = new Session(find('#stage', HTMLCanvasElement), { ctx, buffer }, {
     title: song.title,
     notes: song.charts[state.picked.difficulty],
