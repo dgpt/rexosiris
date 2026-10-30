@@ -1,12 +1,28 @@
 // Audio → rhythm chart. Pure TypeScript so it runs both offline (Bun, over the
-// album) and in the browser (Web Audio decode of a track the player uploads).
+// albums) and in the browser (a track the player uploads).
+//
+// Pipeline: spectral flux per instrument band → beat grid (tempo, phase,
+// regression) → onsets per voice, snapped to the grid → 4-bar phrases → per
+// phrase, follow the most salient voice (with hysteresis) → lanes from the
+// hit's timbre within that voice, density from the phrase's energy.
 
 export const HOP = 256
 const FRAME = 1024
-const BANDS: [number, number][] = [[30, 180], [180, 1200], [1200, 5000], [5000, 11000]]
+
+export const VOICES = [
+  { name: 'kick', lo: 30, hi: 130 },
+  { name: 'bass', lo: 130, hi: 400 },
+  { name: 'snare', lo: 400, hi: 1600 },
+  { name: 'lead', lo: 1600, hi: 4500 },
+  { name: 'hats', lo: 4500, hi: 9000 },
+  { name: 'air', lo: 9000, hi: 11000 },
+] as const
+export type VoiceName = (typeof VOICES)[number]['name']
 
 export type Lane = 0 | 1 | 2 | 3
-export type Note = { t: number; lane: Lane }
+export type Quant = 4 | 8 | 16
+export type Note = { t: number; lane: Lane; q?: Quant }
+export type Section = { t: number; voice: VoiceName; energy: number }
 export type Difficulty = 'easy' | 'normal' | 'hard'
 export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard']
 
@@ -17,6 +33,8 @@ export type Analysis = {
   firstBeat: number
   envelope: Float32Array
   bandFlux: Float32Array[]
+  bandCentroid: Float32Array[]
+  rms: Float32Array
 }
 
 function fft(re: Float64Array, im: Float64Array) {
@@ -48,42 +66,49 @@ function fft(re: Float64Array, im: Float64Array) {
   }
 }
 
+
 export function analyze(pcm: Float32Array, sampleRate: number): Analysis {
   const frames = Math.max(0, Math.floor((pcm.length - FRAME) / HOP))
   const window = new Float64Array(FRAME).map((_, i) => 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (FRAME - 1)))
   const binHz = sampleRate / FRAME
-  const bandBins = BANDS.map(([lo, hi]) => [Math.max(1, Math.floor(lo / binHz)), Math.min(FRAME / 2, Math.ceil(hi / binHz))] as const)
+  const bandBins = VOICES.map(({ lo, hi }) => [Math.max(1, Math.floor(lo / binHz)), Math.min(FRAME / 2, Math.ceil(hi / binHz))] as const)
   const prev = new Float64Array(FRAME / 2)
-  const bandFlux = BANDS.map(() => new Float32Array(frames))
+  const bandFlux = VOICES.map(() => new Float32Array(frames))
+  const bandCentroid = VOICES.map(() => new Float32Array(frames))
   const envelope = new Float32Array(frames)
+  const rms = new Float32Array(frames)
   const re = new Float64Array(FRAME), im = new Float64Array(FRAME)
   for (let f = 0; f < frames; f++) {
     const off = f * HOP
-    for (let i = 0; i < FRAME; i++) { re[i] = (pcm[off + i] ?? 0) * window[i]!; im[i] = 0 }
+    let sq = 0
+    for (let i = 0; i < FRAME; i++) { const v = pcm[off + i] ?? 0; sq += v * v; re[i] = v * window[i]!; im[i] = 0 }
+    rms[f] = Math.sqrt(sq / FRAME)
     fft(re, im)
     let total = 0
     for (let b = 0; b < bandBins.length; b++) {
       const [lo, hi] = bandBins[b]!
-      let flux = 0
+      let flux = 0, wsum = 0, msum = 0
       for (let k = lo; k < hi; k++) {
         const mag = Math.log1p(10 * Math.hypot(re[k]!, im[k]!))
         const d = mag - prev[k]!
-        if (d > 0) flux += d
+        if (d > 0) { flux += d; wsum += d * k }
+        msum += d > 0 ? d : 0
         prev[k] = mag
       }
-      flux /= hi - lo
-      bandFlux[b]![f] = flux
-      total += flux
+      bandFlux[b]![f] = flux / (hi - lo)
+      bandCentroid[b]![f] = msum > 0 ? (wsum / msum - lo) / Math.max(1, hi - lo) : 0.5
+      total += flux / (hi - lo)
     }
     envelope[f] = total
   }
   normalize(envelope)
   bandFlux.forEach(normalize)
+  normalize(rms)
   const fps = sampleRate / HOP
   let bpm = estimateTempo(envelope, fps)
   let phase = estimatePhase(envelope, fps, bpm)
   for (let pass = 0; pass < 3; pass++) ({ bpm, phase } = refineGrid(envelope, fps, bpm, phase))
-  return { sampleRate, duration: pcm.length / sampleRate, bpm, firstBeat: phase + frameCenter(sampleRate), envelope, bandFlux }
+  return { sampleRate, duration: pcm.length / sampleRate, bpm, firstBeat: phase + frameCenter(sampleRate), envelope, bandFlux, bandCentroid, rms }
 }
 
 const frameCenter = (sampleRate: number) => FRAME / 2 / sampleRate
@@ -150,54 +175,137 @@ export function refineGrid(env: Float32Array, fps: number, bpm: number, phase: n
   return { bpm: 60 / beat, phase: first }
 }
 
-const DENSITY: Record<Difficulty, { subdiv: number; perSecond: number; chords: boolean }> = {
-  easy: { subdiv: 1, perSecond: 1.3, chords: false },
-  normal: { subdiv: 2, perSecond: 2.6, chords: false },
-  hard: { subdiv: 4, perSecond: 4.6, chords: true },
+
+type Hit = { t: number; slot: number; strength: number; timbre: number; voice: number }
+
+export function voiceHits(a: Analysis, voice: number): Hit[] {
+  const fps = a.sampleRate / HOP
+  const flux = a.bandFlux[voice]!, cent = a.bandCentroid[voice]!
+  const win = Math.round(0.5 * fps), minGap = Math.round(0.07 * fps)
+  const out: Hit[] = []
+  const step = 60 / a.bpm / 4
+  const center = frameCenter(a.sampleRate)
+  let last = -Infinity
+  for (let i = 1; i < flux.length - 1; i++) {
+    const v = flux[i]!
+    if (v < 0.05 || v < flux[i - 1]! || v < flux[i + 1]!) continue
+    let mean = 0, n = 0
+    for (let j = Math.max(0, i - win); j < Math.min(flux.length, i + win); j++) { mean += flux[j]!; n++ }
+    mean /= n
+    if (v < mean * 1.5 + 0.04 || i - last < minGap) continue
+    last = i
+    const t = i / fps + center
+    const slot = Math.round((t - a.firstBeat) / step)
+    const snapped = a.firstBeat + slot * step
+    if (Math.abs(snapped - t) > 0.045 || snapped < 1.2 || snapped > a.duration - 0.8) continue
+    out.push({ t: snapped, slot, strength: v - mean, timbre: cent[i]!, voice })
+  }
+  return out
+}
+
+const BEATS_PER_PHRASE = 16
+const TARGET: Record<Difficulty, { grid: 1 | 2 | 4; perBeat: number; second: boolean; chords: boolean }> = {
+  easy: { grid: 1, perBeat: 0.55, second: false, chords: false },
+  normal: { grid: 2, perBeat: 1.05, second: false, chords: false },
+  hard: { grid: 4, perBeat: 1.9, second: true, chords: true },
+}
+
+const VOICE_WEIGHT = [1.0, 0.85, 1.15, 1.2, 0.8, 0.45]
+
+export function sections(a: Analysis, hits: Hit[][]): Section[] {
+  const beat = 60 / a.bpm, fps = a.sampleRate / HOP
+  const phraseLen = beat * BEATS_PER_PHRASE
+  const count = Math.max(1, Math.ceil((a.duration - a.firstBeat) / phraseLen))
+  const raw: number[][] = []
+  for (let p = 0; p < count; p++) {
+    const t0 = a.firstBeat + p * phraseLen, t1 = t0 + phraseLen
+    raw.push(hits.map((hs) => {
+      const inside = hs.filter((h) => h.t >= t0 && h.t < t1)
+      const onEighth = inside.filter((h) => h.slot % 2 === 0).length
+      const regular = inside.length ? onEighth / inside.length : 0
+      return inside.reduce((x, h) => x + h.strength, 0) * (0.6 + 0.4 * regular)
+    }))
+  }
+  const mean = VOICES.map((_, v) => Math.max(1e-6, raw.reduce((s, r) => s + r[v]!, 0) / count))
+  const out: Section[] = []
+  let current = -1
+  raw.forEach((r, p) => {
+    const t0 = a.firstBeat + p * phraseLen, t1 = t0 + phraseLen
+    const score = r.map((sal, v) => (VOICE_WEIGHT[v]! * sal) / Math.sqrt(mean[v]!))
+    let best = score.indexOf(Math.max(...score))
+    if (current >= 0 && score[current]! * 1.3 >= score[best]! && r[current]! > 0) best = current
+    current = best
+    let e = 0, n = 0
+    for (let i = Math.max(0, Math.floor(t0 * fps)); i < Math.min(a.rms.length, Math.floor(t1 * fps)); i++) { e += a.rms[i]!; n++ }
+    out.push({ t: round3(Math.max(0, t0)), voice: VOICES[best]!.name, energy: n ? e / n : 0 })
+  })
+  const max = Math.max(...out.map((s) => s.energy), 1e-6)
+  out.forEach((s) => (s.energy = Math.round((s.energy / max) * 100) / 100))
+  return out
+}
+
+const LANE_SPREAD: Lane[][] = [[1], [1, 2], [0, 1, 3], [0, 1, 2, 3]]
+
+export function laneBins(values: number[]): (v: number) => Lane {
+  if (values.length === 0) return () => 1
+  const sorted = [...values].sort((x, y) => x - y)
+  const span = Math.max(1e-6, sorted[sorted.length - 1]! - sorted[0]!)
+  const gaps = sorted.slice(1).map((v, i) => ({ at: (v + sorted[i]!) / 2, size: v - sorted[i]! }))
+  const minGap = Math.max(0.035, span * 0.12)
+  const cuts = gaps.filter((g) => g.size >= minGap).sort((x, y) => y.size - x.size).slice(0, 3).map((g) => g.at).sort((x, y) => x - y)
+  if (cuts.length === 0) {
+    const q = [0.25, 0.5, 0.75].map((f) => sorted[Math.floor(f * (sorted.length - 1))]!)
+    return (v) => (v <= q[0]! ? 0 : v <= q[1]! ? 1 : v <= q[2]! ? 2 : 3)
+  }
+  const lanes = LANE_SPREAD[cuts.length]!
+  return (v) => lanes[cuts.filter((c) => v > c).length]!
+}
+
+const quantOf = (slot: number): Quant => (slot % 4 === 0 ? 4 : slot % 2 === 0 ? 8 : 16)
+
+export function chartWithSections(a: Analysis, difficulty: Difficulty): { notes: Note[]; sections: Section[] } {
+  const hits = VOICES.map((_, v) => voiceHits(a, v))
+  const secs = sections(a, hits)
+  const beat = 60 / a.bpm
+  const phraseLen = beat * BEATS_PER_PHRASE
+  const { grid, perBeat, second, chords } = TARGET[difficulty]
+  const notes: Note[] = []
+  let prevLane: Lane = 1, prevT = -1, jack = 0
+  secs.forEach((sec, p) => {
+    const t0 = a.firstBeat + p * phraseLen, t1 = t0 + phraseLen
+    const vi = VOICES.findIndex((v) => v.name === sec.voice)
+    const allowed = (h: Hit) => h.slot % (4 / grid) === 0
+    const primary = hits[vi]!.filter((h) => h.t >= t0 && h.t < t1 && allowed(h))
+    let pool = primary
+    if (second) {
+      const others = hits.map((hs, v) => ({ v, hs: hs.filter((h) => h.t >= t0 && h.t < t1 && h.slot % 2 === 0) })).filter((o) => o.v !== vi)
+      const runner = others.sort((x, y) => y.hs.reduce((s, h) => s + h.strength, 0) - x.hs.reduce((s, h) => s + h.strength, 0))[0]
+      if (runner) pool = [...primary, ...runner.hs.filter((h) => !primary.some((p2) => p2.slot === h.slot))]
+    }
+    const budget = Math.round(perBeat * BEATS_PER_PHRASE * (0.45 + 0.75 * sec.energy))
+    const kept = [...pool].sort((x, y) => y.strength - x.strength).slice(0, budget).sort((x, y) => x.t - y.t)
+    const bins = new Map<number, (v: number) => Lane>()
+    for (const h of kept) {
+      if (!bins.has(h.voice)) bins.set(h.voice, laneBins(kept.filter((k) => k.voice === h.voice).map((k) => k.timbre)))
+      let lane = bins.get(h.voice)!(h.timbre)
+      if (h.voice !== vi) lane = (3 - lane) as Lane
+      if (lane === prevLane) {
+        jack++
+        const close = h.t - prevT < beat * (difficulty === 'easy' ? 1.01 : 0.51)
+        if ((difficulty === 'easy' && close) || jack >= (difficulty === 'hard' ? 3 : 2)) { lane = ((lane + (h.timbre > 0.5 ? 1 : 3)) % 4) as Lane; jack = 0 }
+      } else jack = 0
+      if (h.t - prevT < 1e-3) continue
+      notes.push({ t: round3(h.t), lane, q: quantOf(h.slot) })
+      if (chords && h.slot % 16 === 0 && h.strength > 0.35) notes.push({ t: round3(h.t), lane: ((lane + 2) % 4) as Lane, q: 4 })
+      prevLane = lane
+      prevT = h.t
+    }
+  })
+  return { notes, sections: secs }
 }
 
 export function chart(a: Analysis, difficulty: Difficulty): Note[] {
-  const fps = a.sampleRate / HOP
-  const { subdiv, perSecond, chords } = DENSITY[difficulty]
-  const step = 60 / a.bpm / subdiv
-  const tol = Math.max(1, Math.round(0.035 * fps))
-  type Slot = { t: number; score: number; band: number; strong: boolean; index: number }
-  const slots: Slot[] = []
-  for (let index = 0, t = a.firstBeat; t < a.duration - 1; index++, t += step) {
-    if (t < 1.5) continue
-    const c = Math.round((t - frameCenter(a.sampleRate)) * fps)
-    let score = 0, band = 0, bandBest = -1
-    for (let i = c - tol; i <= c + tol; i++) score = Math.max(score, a.envelope[i] ?? 0)
-    for (let b = 0; b < a.bandFlux.length; b++) {
-      let v = 0
-      for (let i = c - tol; i <= c + tol; i++) v = Math.max(v, a.bandFlux[b]![i] ?? 0)
-      if (v > bandBest) { bandBest = v; band = b }
-    }
-    const onBeat = index % subdiv === 0
-    slots.push({ t, score: score * (onBeat ? 1.25 : 1), band, strong: onBeat && index % (subdiv * 4) === 0, index })
-  }
-  const target = Math.round(perSecond * a.duration)
-  const threshold = [...slots].sort((x, y) => y.score - x.score)[Math.min(slots.length - 1, target)]?.score ?? 0
-  const floor = 0.08
-  const notes: Note[] = []
-  let last: Lane = 1, prevBand = -1
-  for (const s of slots) {
-    if (s.score < Math.max(threshold, floor)) continue
-    let lane = laneFor(s.band, s.index, last, prevBand)
-    if (difficulty === 'easy' && lane === last) lane = ((lane + 2) % 4) as Lane
-    notes.push({ t: round3(s.t), lane })
-    if (chords && s.strong && s.score > 0.6) notes.push({ t: round3(s.t), lane: ((lane + 2) % 4) as Lane })
-    last = lane
-    prevBand = s.band
-  }
-  return notes
-}
-
-function laneFor(band: number, index: number, last: Lane, prevBand: number): Lane {
-  const home: Lane[][] = [[0, 3], [1, 0], [2, 1], [3, 2]]
-  const options = home[band]!
-  if (band === prevBand) return options[index % 2]!
-  return options[0] === last ? options[1]! : options[0]!
+  return chartWithSections(a, difficulty).notes
 }
 
 const round3 = (x: number) => Math.round(x * 1000) / 1000

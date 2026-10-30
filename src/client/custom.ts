@@ -1,4 +1,4 @@
-import { analyze, chart, DIFFICULTIES, type Difficulty } from '../shared/analyze'
+import { analyze, chartWithSections, DIFFICULTIES, type Difficulty, type Note } from '../shared/analyze'
 import type { SongChart } from '../shared/types'
 
 const ANALYSIS_RATE = 22050
@@ -16,10 +16,11 @@ export async function chartFromFile(ctx: AudioContext, file: File, onStage: (s: 
   onStage('Finding the beat…')
   await new Promise((r) => setTimeout(r, 0))
   const a = analyze(mono, ANALYSIS_RATE)
-  const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, chart(a, d)])) as Record<Difficulty, ReturnType<typeof chart>>
+  const built = Object.fromEntries(DIFFICULTIES.map((d) => [d, chartWithSections(a, d)]))
+  const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, built[d]!.notes])) as Record<Difficulty, Note[]>
   const title = file.name.replace(/\.[^.]+$/, '')
   return {
     buffer,
-    song: { slug: 'custom', album: 'your track', title, bpm: a.bpm, firstBeat: a.firstBeat, duration: a.duration, charts },
+    song: { slug: 'custom', album: 'your track', title, bpm: a.bpm, firstBeat: a.firstBeat, duration: a.duration, charts, sections: built.hard!.sections },
   }
 }

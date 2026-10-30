@@ -1,4 +1,4 @@
-import type { Difficulty, Note } from './analyze'
+import type { Difficulty, Note, Section } from './analyze'
 
 export type SongChart = {
   slug: string
@@ -8,6 +8,7 @@ export type SongChart = {
   firstBeat: number
   duration: number
   charts: Record<Difficulty, Note[]>
+  sections?: Section[]
 }
 
 export type ChartIndexEntry = {
