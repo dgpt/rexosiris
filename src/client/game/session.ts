@@ -70,6 +70,7 @@ export class Session {
     const onUp = (e: KeyboardEvent) => { this.release(KEY_LANES[e.code]) }
     const onTouch = (e: TouchEvent) => { this.touch(e) }
     const onTouchEnd = (e: TouchEvent) => { this.untouch(e) }
+    const onBlur = () => { this.releaseAll() }
     const finish = (quit: boolean) => {
       if (this.done) return
       this.done = true
@@ -77,6 +78,8 @@ export class Session {
       removeEventListener('keyup', onUp)
       this.canvas.removeEventListener('touchstart', onTouch)
       this.canvas.removeEventListener('touchend', onTouchEnd)
+      this.canvas.removeEventListener('touchcancel', onTouchEnd)
+      removeEventListener('blur', onBlur)
       this.source.stop()
       resolve(this.result(quit))
     }
@@ -84,6 +87,8 @@ export class Session {
     addEventListener('keyup', onUp)
     this.canvas.addEventListener('touchstart', onTouch, { passive: false })
     this.canvas.addEventListener('touchend', onTouchEnd)
+    this.canvas.addEventListener('touchcancel', onTouchEnd)
+    addEventListener('blur', onBlur)
     this.source.start(this.startAt)
     const tick = () => {
       if (this.done) return
@@ -127,6 +132,11 @@ export class Session {
       this.release(this.touches.get(t.identifier))
       this.touches.delete(t.identifier)
     }
+  }
+
+  private releaseAll() {
+    this.touches.clear()
+    for (const lane of LANES) this.release(lane)
   }
 
   private release(lane: Lane | undefined) {

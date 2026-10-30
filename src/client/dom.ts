@@ -39,3 +39,5 @@ export function report(error: unknown) {
 export const setHue = (hue: number) => { document.documentElement.style.setProperty('--hue', String(hue)) }
 
 export const hueOf = (seed: string) => Array.from(seed, (c) => c.codePointAt(0) ?? 0).reduce((h, c) => (h * 31 + c) % 360, 7)
+
+export const count = (n: number, noun: string) => `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`

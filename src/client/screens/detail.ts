@@ -1,6 +1,6 @@
 import { DIFFICULTIES, type Difficulty } from '../../shared/analyze'
 import type { ChartIndexEntry, ScoreRow } from '../../shared/types'
-import { esc, fmtTime } from '../dom'
+import { count, esc, fmtTime } from '../dom'
 import { signedIn, state } from '../state'
 
 const PATH_SHOWN = 9
@@ -17,7 +17,7 @@ function pathMarkup(voices: readonly string[] | undefined) {
 function difficultyButton(song: ChartIndexEntry, d: Difficulty) {
   const on = d === state.picked.difficulty
   const holds = song.holds?.[d] ?? 0
-  const detail = `${song.notes[d]} notes${holds > 0 ? ` · ${holds} holds` : ''}`
+  const detail = `${count(song.notes[d], 'note')}${holds > 0 ? ` · ${count(holds, 'hold')}` : ''}`
   return `<button role="radio" aria-checked="${on}" data-difficulty="${d}" class="${on ? 'on' : ''}">${d}<small>${detail}</small></button>`
 }
 

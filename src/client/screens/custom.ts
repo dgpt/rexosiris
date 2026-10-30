@@ -2,7 +2,7 @@ import { analyze, chartWithSections, DIFFICULTIES, type Difficulty, type Note, t
 import type { SongChart } from '../../shared/types'
 import { audioContext, stopPreview } from '../audio'
 import { isDifficulty } from '../decode'
-import { esc, find, findAll, fmtTime, onClick, render } from '../dom'
+import { count, esc, find, findAll, fmtTime, onClick, render } from '../dom'
 import { nav } from '../nav'
 import { type CustomTrack, state } from '../state'
 
@@ -41,7 +41,7 @@ function readyMarkup({ song }: CustomTrack) {
   const voices = [...new Set((song.sections ?? []).map((x) => x.voice))]
   const radios = DIFFICULTIES.map((d) => {
     const on = d === state.picked.difficulty
-    return `<button role="radio" aria-checked="${on}" data-difficulty="${d}" class="${on ? 'on' : ''}">${d}<small>${song.charts[d].length} notes</small></button>`
+    return `<button role="radio" aria-checked="${on}" data-difficulty="${d}" class="${on ? 'on' : ''}">${d}<small>${count(song.charts[d].length, 'note')}</small></button>`
   })
   return `<section class="card glass"><h2>${esc(song.title)}</h2>
     <p class="meta">${song.bpm.toFixed(1)} bpm · ${fmtTime(song.duration)} · charted in your browser by the same analyzer that charted my albums</p>
