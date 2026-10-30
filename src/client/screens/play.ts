@@ -21,7 +21,7 @@ export async function start() {
 export async function play(song: SongChart, buffer: AudioBuffer, ranked: boolean) {
   const ctx = audioContext()
   await ctx.resume()
-  render('play', '<canvas id="stage" class="stage" aria-label="Playfield"></canvas>')
+  render('play', '<canvas id="stage" class="stage" aria-label="Playfield"></canvas><button type="button" class="quit" aria-label="Quit this song">×</button>')
   const hue = hueOf(song.slug === 'custom' ? song.title : song.slug)
   const { settings } = signedIn()
   const session = new Session(find('#stage', HTMLCanvasElement), { ctx, buffer }, {
@@ -31,6 +31,7 @@ export async function play(song: SongChart, buffer: AudioBuffer, ranked: boolean
     bpm: song.bpm,
     firstBeat: song.firstBeat,
   }, { offsetMs: settings.offsetMs, speed: settings.speed, hue })
+  onClick('.quit', () => { session.quit() })
   const result = await session.run()
   if (result.quit) {
     nav().select()

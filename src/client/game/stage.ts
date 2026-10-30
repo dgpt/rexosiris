@@ -2,6 +2,8 @@ import { FONT, type Frame, JUDGE_COLOR, laneCenter, LANES, receptor } from './re
 import type { Scorecard } from './judge'
 import type { Judgment } from '../../shared/types'
 
+const HUD_LEFT = 58
+
 type Star = { x: number; y: number; readonly z: number }
 
 export type Hud = {
@@ -72,11 +74,11 @@ export function drawHud(f: Frame, card: Scorecard, hud: Hud) {
   const mid = layout.receptorY + (layout.h - layout.receptorY) * 0.42
   g.fillStyle = `hsl(${f.hue}, 90%, 65%)`
   g.fillRect(0, 0, layout.w * hud.progress, 3)
-  text(g, hud.title, { x: 20, y: 34, font: `700 16px ${FONT}`, color: 'rgba(255,255,255,0.85)', align: 'left' })
-  text(g, `${Math.round(hud.bpm)} BPM`, { x: 20, y: 52, font: `500 12px ${FONT}`, color: 'rgba(255,255,255,0.5)', align: 'left' })
+  text(g, hud.title, { x: HUD_LEFT, y: 34, font: `700 16px ${FONT}`, color: 'rgba(255,255,255,0.85)', align: 'left' })
+  text(g, `${Math.round(hud.bpm)} BPM`, { x: HUD_LEFT, y: 52, font: `500 12px ${FONT}`, color: 'rgba(255,255,255,0.5)', align: 'left' })
   text(g, `${(card.accuracy * 100).toFixed(2)}%`, { x: layout.w - 20, y: 40, font: `700 26px ${FONT}`, color: '#fff', align: 'right' })
   const flawless = card.counts.miss === 0 && card.holds.ng === 0 && card.maxCombo > 0
-  text(g, flawless ? 'FULL COMBO SO FAR' : 'ESC to quit', { x: layout.w - 20, y: 60, font: `600 12px ${FONT}`, color: flawless ? '#ffd23d' : 'rgba(255,255,255,0.4)', align: 'right' })
+  text(g, flawless ? 'FULL COMBO SO FAR' : '', { x: layout.w - 20, y: 60, font: `600 12px ${FONT}`, color: flawless ? '#ffd23d' : 'rgba(255,255,255,0.4)', align: 'right' })
   if (hud.voice !== '') {
     text(g, 'FOLLOWING', { x: 20, y: layout.h - 52, font: `600 11px ${FONT}`, color: 'rgba(255,255,255,0.45)', align: 'left' })
     const grow = Math.max(0, 1 - hud.voiceAge / 400)

@@ -112,6 +112,8 @@
   @media (prefers-reduced-motion: reduce) { *, *::before { animation:none !important; } }
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);max-width:min(560px,92vw);padding:12px 18px;border-radius:12px;background:hsl(350 70% 22% / .92);border:1px solid hsl(350 80% 60% / .5);color:#fff;font:500 14px/1.4 'Space Grotesk',system-ui,sans-serif;box-shadow:0 10px 40px #0008;backdrop-filter:blur(10px);z-index:50;animation:toast-in .25s ease-out}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,10px)}}
+.quit{position:fixed;left:12px;top:16px;width:36px;height:36px;border-radius:50%;border:1px solid #fff3;background:#0006;color:#fffc;font:400 22px/1 'Space Grotesk',system-ui,sans-serif;cursor:pointer;z-index:5;backdrop-filter:blur(6px)}
+.quit:hover,.quit:focus-visible{background:#fff2;color:#fff;outline:none;border-color:#fff8}
 </style>
 </head>
 <body>

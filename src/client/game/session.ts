@@ -44,6 +44,7 @@ export class Session {
   private milestone: { text: string; at: number } | null = null
   private voice = { name: '', since: 0 }
   private done = false
+  private stop: ((quit: boolean) => void) | null = null
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -83,6 +84,7 @@ export class Session {
       this.source.stop()
       resolve(this.result(quit))
     }
+    this.stop = finish
     addEventListener('keydown', onKey)
     addEventListener('keyup', onUp)
     this.canvas.addEventListener('touchstart', onTouch, { passive: false })
@@ -96,6 +98,10 @@ export class Session {
       else requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
+  }
+
+  quit() {
+    this.stop?.(true)
   }
 
   private songTime() {
