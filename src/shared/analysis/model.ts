@@ -40,7 +40,8 @@ export type Hit = {
 }
 
 export const framesPerSecond = (sampleRate: number) => sampleRate / HOP
-export const frameCenter = (sampleRate: number) => FRAME / 2 / sampleRate
+export const ONSET_LAG_OF_FRAME = 0.75
+export const onsetLag = (sampleRate: number) => (FRAME * ONSET_LAG_OF_FRAME) / sampleRate
 export const beatLength = (bpm: number) => 60 / bpm
 export const sample = (xs: ArrayLike<number>, i: number) => xs[i] ?? 0
 export const round3 = (x: number) => Math.round(x * 1000) / 1000

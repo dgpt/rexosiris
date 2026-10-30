@@ -19,12 +19,14 @@ describe('chart generation from audio', () => {
     })
   }
 
-  test('easy notes land on the clicks, within one analysis frame', () => {
+  test('easy notes land on the clicks: none more than one frame off, and no bias beyond 5 ms', () => {
     const a = analyze(clickTrack(120, 30, 0.25), SR)
-    for (const n of chart(a, 'easy')) {
+    const errors = chart(a, 'easy').map((n) => {
       const fromClick = ((n.t - 0.25) % 0.5 + 0.5) % 0.5
-      expect(Math.min(fromClick, 0.5 - fromClick)).toBeLessThan(0.025)
-    }
+      return fromClick > 0.25 ? fromClick - 0.5 : fromClick
+    })
+    expect(errors.every((e) => Math.abs(e) < 0.012)).toBe(true)
+    expect(Math.abs(errors.toSorted((x, y) => x - y)[Math.floor(errors.length / 2)] ?? 1)).toBeLessThan(0.005)
   })
 
   test('harder charts are denser, and easy never asks for the same lane twice within a beat', () => {

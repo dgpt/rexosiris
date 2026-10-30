@@ -1,6 +1,6 @@
 import { fft, hann } from './fft'
 import { estimatePhase, estimateTempo, refineGrid } from './grid'
-import { type Analysis, FRAME, frameCenter, framesPerSecond, HOP, sample, VOICES } from './model'
+import { type Analysis, FRAME, framesPerSecond, HOP, onsetLag, sample, VOICES } from './model'
 
 type Frame = { readonly re: Float64Array; readonly im: Float64Array; readonly prev: Float64Array }
 
@@ -80,7 +80,7 @@ export function analyze(pcm: Float32Array, sampleRate: number): Analysis {
     sampleRate,
     duration: pcm.length / sampleRate,
     bpm: grid.bpm,
-    firstBeat: grid.phase + frameCenter(sampleRate),
+    firstBeat: grid.phase + onsetLag(sampleRate),
     envelope,
     bandFlux: channels.map((c) => c.flux),
     bandCentroid: channels.map((c) => c.centroid),

@@ -57,3 +57,23 @@ export function voicesOf(notes: readonly ScoreNote[]): Voice[] {
     return [{ name, kind, notes: groups.map((g) => line(g, kind)) }]
   })
 }
+
+const DOUBLED = 0.8
+const MELODIC: ReadonlySet<VoiceKind> = new Set(['lead', 'bass', 'chords'])
+export const isMelodic = (kind: VoiceKind) => MELODIC.has(kind)
+
+function covers(part: Voice, voice: Voice) {
+  const onsets = part.notes.map((n) => n.t)
+  const shared = voice.notes.filter((n) => onsets.some((t) => Math.abs(t - n.t) < SAME_ONSET_SECONDS)).length
+  return shared / Math.max(1, voice.notes.length) >= DOUBLED
+}
+
+export function partsOf(voices: readonly Voice[]): Voice[] {
+  const parts: Voice[] = []
+  const ranked = voices.toSorted((a, b) => b.notes.length - a.notes.length)
+  for (const voice of ranked) {
+    const doubled = isMelodic(voice.kind) && parts.some((p) => isMelodic(p.kind) && covers(p, voice))
+    if (!doubled) parts.push(voice)
+  }
+  return parts
+}
