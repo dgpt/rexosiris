@@ -21,7 +21,7 @@ People who'd rather play an album than just listen to it, and people who've hear
 
 ## The interesting part: charts that listen
 
-Nobody hand-charted these. `src/shared/analyze.ts` is plain TypeScript that runs both offline over the albums (`scripts/build-charts.ts`) and in your browser when you upload a track.
+Nobody hand-charted these. `src/shared/analysis/` is plain TypeScript that runs both offline over the albums (`scripts/build-charts.ts`) and in your browser when you upload a track.
 
 1. **Six voices.** A Hann-windowed FFT (1024 / hop 256 at 22.05 kHz) is split into instrument bands: kick, bass, snare body, snare crack and lead, hats, and cymbals. For each band it tracks spectral flux (hits), level (sustain) and a flux-weighted centroid (where in the band the hit sits, which stands in for timbre and pitch).
 2. **The beat grid.** Tempo comes from autocorrelating the onset envelope at 1×, 2× and 4× the beat lag (75–185 BPM, with a prior so it doesn't settle on half or double time). Then comes the phase, and a regression through the strongest onset near each beat. On a click track every note lands within one analysis frame (~11 ms).
@@ -37,7 +37,7 @@ The browser sends judgment counts, not a score. The server checks that the count
 
 ## Stack
 
-- TypeScript end to end, built with Bun. The client is vanilla TS plus Canvas plus Web Audio, with no framework, at about 20 KB.
+- TypeScript end to end, built with Bun. The client is vanilla TS plus Canvas plus Web Audio, with no framework, at about 43 KB minified.
 - The API is one handler. It runs locally under `Bun.serve` and in production as a Netlify Function (`netlify/functions/api.mts`), with Netlify Blobs as the store.
 - Audio is my FLAC masters, transcoded to 128k MP3 (`scripts/transcode.sh`).
 
@@ -46,7 +46,18 @@ bun install
 bun run dev        # http://127.0.0.1:4390, file-backed store in .data/
 bun run test       # analyzer + API
 bun run typecheck
+bun run lint       # oxlint, type-aware (needs Node >= 22.6 for the comment rule)
+bun run check      # all three
 ```
+
+## Code layout and the lint bar
+
+- `src/shared/analysis/`: one module per stage of the charter (`fft`, `features`, `grid`, `voices`, `phrases`, `lanes`, `chart`), with `model.ts` holding the shared types and constants. `analyze.ts` re-exports them.
+- `src/shared/guards.ts`: runtime type guards. Nothing read from the network or the store is cast; it is checked.
+- `src/server/`: `handler.ts` is a route table of small typed handlers, `session.ts` holds passwords and signed cookies, and `dev.ts` is the local file store.
+- `src/client/`: `game/` (judging, scorecard, rendering, the play session), `screens/` (one module per screen) and small `api`, `audio`, `state`, `dom` and `decode` modules.
+
+`.oxlintrc.json` is strict on purpose. It turns the correctness, suspicious, pedantic and perf categories into errors, and the type-aware rules (no `any`, no unsafe casts, no non-null `!`, strict booleans, no floating promises) apply on top. It also caps size: 250 lines a file, 60 a function, complexity 12, nesting depth 3, 4 parameters. A local rule (`lint/no-comments.ts`) bans comments, because a comment that was true gets read as current long after it stops being true. Names, types and tests carry the meaning instead. The whole tree lints at 0 warnings and 0 errors.
 
 ## How it was built, and what I'd do next
 

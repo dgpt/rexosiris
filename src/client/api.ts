@@ -1,27 +1,32 @@
 import type { Difficulty } from '../shared/analyze'
-import type { ScoreRow, ScoreSubmission } from '../shared/types'
+import type { ScoreSubmission } from '../shared/types'
+import { decode, isLeaderboard, isMe, isRecord, isSession, isSettings, isSubmitResult, type Settings } from './decode'
 
-export type Settings = { offsetMs: number; speed: number }
-export type Me = { name: string; settings: Settings; bests: Record<string, ScoreRow>; history: ScoreRow[] }
+type Method = 'GET' | 'POST' | 'PUT'
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: body === undefined ? {} : { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    credentials: 'same-origin',
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
-  return data as T
+async function call(method: Method, path: string, body?: unknown): Promise<unknown> {
+  const init: RequestInit = { method, credentials: 'same-origin' }
+  if (body !== undefined) {
+    init.headers = { 'content-type': 'application/json' }
+    init.body = JSON.stringify(body)
+  }
+  const res = await fetch(`/api${path}`, init)
+  const data: unknown = await res.json().catch(() => null)
+  if (!res.ok) {
+    const message = isRecord(data) && typeof data['error'] === 'string' ? data['error'] : `HTTP ${res.status}`
+    throw new Error(message)
+  }
+  return data
 }
 
 export const api = {
-  me: () => call<Me>('GET', '/me'),
-  signup: (username: string, password: string) => call<{ name: string }>('POST', '/signup', { username, password }),
-  login: (username: string, password: string) => call<{ name: string }>('POST', '/login', { username, password }),
+  session: async () => decode(await call('GET', '/session'), isSession, 'session').signedIn,
+  me: async () => decode(await call('GET', '/me'), isMe, 'profile'),
+  signup: (username: string, password: string) => call('POST', '/signup', { username, password }),
+  login: (username: string, password: string) => call('POST', '/login', { username, password }),
   logout: () => call('POST', '/logout'),
-  settings: (s: Partial<Settings>) => call<Settings>('PUT', '/me/settings', s),
-  submit: (s: ScoreSubmission) => call<{ row: ScoreRow; personalBest: boolean; previousBest: ScoreRow | null; rank: number | null }>('POST', '/scores', s),
-  leaderboard: (slug: string, d: Difficulty) => call<ScoreRow[]>('GET', `/leaderboard/${slug}/${d}`),
+  settings: async (patch: Partial<Settings>) => decode(await call('PUT', '/me/settings', patch), isSettings, 'settings'),
+  submit: async (run: ScoreSubmission) => decode(await call('POST', '/scores', run), isSubmitResult, 'score receipt'),
+  leaderboard: async (slug: string, difficulty: Difficulty) =>
+    decode(await call('GET', `/leaderboard/${slug}/${difficulty}`), isLeaderboard, 'leaderboard'),
 }

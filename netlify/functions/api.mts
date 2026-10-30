@@ -2,16 +2,16 @@ import { getStore } from '@netlify/blobs'
 import { handle, type Store } from '../../src/server/handler'
 
 function blobStore(): Store {
-  const s = getStore({ name: 'rhythm', consistency: 'strong' })
+  const blobs = getStore({ name: 'rhythm', consistency: 'strong' })
   return {
-    get: (key) => s.get(key, { type: 'json' }),
-    set: (key, value) => s.setJSON(key, value).then(() => undefined),
+    get: (key) => blobs.get(key, { type: 'json' }),
+    set: async (key, value) => { await blobs.setJSON(key, value) },
   }
 }
 
-export default async (req: Request) => {
-  const secret = process.env.SESSION_SECRET
-  if (!secret) return new Response(JSON.stringify({ error: 'SESSION_SECRET is not set on this deploy' }), { status: 500 })
+export default (req: Request): Promise<Response> => {
+  const secret = process.env['SESSION_SECRET'] ?? ''
+  if (secret === '') return Promise.resolve(new Response(JSON.stringify({ error: 'SESSION_SECRET is not set on this deploy' }), { status: 500 }))
   return handle(req, blobStore(), secret)
 }
 

@@ -1,0 +1,61 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
+  "jsPlugins": ["./lint/no-comments.ts"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "error"
+  },
+  "ignorePatterns": ["public/app.js", "node_modules/**", ".netlify/**"],
+  "rules": {
+    "rhythm/no-comments": "error",
+    "no-warning-comments": ["error", { "terms": ["eslint-disable", "oxlint-disable", "todo", "fixme"], "location": "anywhere" }],
+    "unicorn/no-abusive-eslint-disable": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-confusing-void-expression": "error",
+    "typescript/return-await": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/consistent-type-imports": "error",
+    "eqeqeq": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-param-reassign": "error",
+    "no-nested-ternary": "error",
+    "no-negated-condition": "error",
+    "no-console": "error",
+    "unicorn/prefer-at": "error",
+    "unicorn/prefer-date-now": "error",
+    "unicorn/no-negation-in-equality-check": "error",
+    "unicorn/no-unreadable-iife": "error",
+    "unicorn/no-useless-promise-resolve-reject": "error",
+    "max-depth": ["error", { "max": 3 }],
+    "max-nested-callbacks": ["error", { "max": 3 }],
+    "max-params": ["error", { "max": 4 }],
+    "max-lines": ["error", { "max": 250, "skipBlankLines": true, "skipComments": false }],
+    "max-lines-per-function": ["error", { "max": 60, "skipBlankLines": true, "IIFEs": true }],
+    "complexity": ["error", { "max": 12 }],
+    "max-dependencies": ["error", { "max": 10 }]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts"],
+      "rules": { "max-lines-per-function": "off", "max-nested-callbacks": ["error", { "max": 4 }] }
+    },
+    {
+      "files": ["scripts/**", "src/server/dev.ts"],
+      "rules": { "no-console": "off" }
+    }
+  ]
+}

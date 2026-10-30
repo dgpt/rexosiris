@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { analyze, chart } from './analyze'
-import { judge } from '../client/game'
+import { judge } from '../client/game/judge'
+import { analyze, chart, chartWithSections } from './analyze'
 
 const SR = 22050
 function clickTrack(bpm: number, seconds: number, offset = 0.25) {
@@ -29,11 +29,12 @@ describe('chart generation from audio', () => {
 
   test('harder charts are denser, and easy never asks for the same lane twice within a beat', () => {
     const a = analyze(clickTrack(140, 40), SR)
-    const [e, n, h] = (['easy', 'normal', 'hard'] as const).map((d) => chart(a, d))
-    expect(e!.length).toBeLessThanOrEqual(n!.length)
-    expect(n!.length).toBeLessThanOrEqual(h!.length)
+    const [e, n, h] = [chart(a, 'easy'), chart(a, 'normal'), chart(a, 'hard')]
+    expect(e.length).toBeLessThanOrEqual(n.length)
+    expect(n.length).toBeLessThanOrEqual(h.length)
     const beat = 60 / 140
-    for (let i = 1; i < e!.length; i++) if (e![i]!.lane === e![i - 1]!.lane) expect(e![i]!.t - e![i - 1]!.t).toBeGreaterThan(beat * 1.01)
+    const jacks = e.slice(1).filter((note, i) => note.lane === e[i]?.lane && note.t - (e[i]?.t ?? 0) <= beat * 1.01)
+    expect(jacks).toEqual([])
   })
 
   test('silence produces no notes', () => {
@@ -50,25 +51,35 @@ describe('judging a key press', () => {
   })
 })
 
-import { chartWithSections } from './analyze'
+type Part = { from: number; to: number; hz: number | 'noise'; every: number; alt?: number }
 
-function synth(seconds: number, parts: { from: number; to: number; hz: number | 'noise'; every: number; alt?: number }[]) {
+function noise(seed: number) {
+  let state = seed
+  return () => {
+    state = (state * 16_807) % 2_147_483_647
+    return (state / 2_147_483_647) * 2 - 1
+  }
+}
+
+function strike(pcm: Float32Array, at: number, hz: number | 'noise', rnd: () => number) {
+  const s0 = Math.round(at * SR)
+  for (let i = 0; i < 2000 && s0 + i < pcm.length; i++) {
+    const env = Math.exp(-i / (hz === 'noise' ? 150 : 500))
+    const wave = hz === 'noise' ? rnd() : Math.sin((2 * Math.PI * hz * i) / SR)
+    pcm[s0 + i] = (pcm[s0 + i] ?? 0) + 0.6 * env * wave
+  }
+}
+
+function synth(seconds: number, parts: readonly Part[]) {
   const pcm = new Float32Array(SR * seconds)
-  let seed = 7
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1
+  const rnd = noise(7)
   for (const p of parts) {
-    let k = 0
-    for (let t = p.from; t < p.to; t += p.every, k++) {
-      const hz = p.alt && k % 2 ? p.alt : p.hz
-      const s0 = Math.round(t * SR)
-      for (let i = 0; i < 2000 && s0 + i < pcm.length; i++) {
-        const env = Math.exp(-i / (hz === 'noise' ? 150 : 500))
-        pcm[s0 + i] = pcm[s0 + i]! + 0.6 * env * (hz === 'noise' ? rnd() : Math.sin((2 * Math.PI * (hz as number) * i) / SR))
-      }
-    }
+    for (let k = 0, t = p.from; t < p.to; t += p.every, k++) strike(pcm, t, p.alt !== undefined && k % 2 === 1 ? p.alt : p.hz, rnd)
   }
   return pcm
 }
+
+const isHigh = (t: number) => Math.round((t - 0.25) / 0.5) % 2 === 1
 
 describe('a smart chart follows the instrument that leads each phrase', () => {
   test('kick phrase, then a noise-hit phrase, then kick again: the chart leaves the kick when it stops and comes back with it', () => {
@@ -78,23 +89,17 @@ describe('a smart chart follows the instrument that leads each phrase', () => {
       { from: 16.25, to: 26, hz: 55, every: 0.5 },
     ])
     const { sections } = chartWithSections(analyze(pcm, SR), 'normal')
-    expect(sections[0]!.voice).toBe('kick')
-    expect(sections[1]!.voice).not.toBe('kick')
-    expect(sections[2]!.voice).toBe('kick')
+    expect(sections.slice(0, 3).map((x) => x.voice === 'kick')).toEqual([true, false, true])
   })
 
   test('the same sound lands in the same lane, and the higher of two pitches lands to the right', () => {
     const pcm = synth(20, [{ from: 0.25, to: 20, hz: 2000, alt: 3800, every: 0.5 }])
     const a = analyze(pcm, SR)
     const { notes } = chartWithSections(a, 'normal')
-    const low = new Set<number>(), high = new Set<number>()
-    for (const n of notes) {
-      const k = Math.round((n.t - 0.25) / 0.5)
-      ;(k % 2 ? high : low).add(n.lane)
-    }
-    expect(low.size).toBe(1)
-    expect(high.size).toBe(1)
-    expect([...high][0]!).toBeGreaterThan([...low][0]!)
+    const high = [...new Set(notes.filter((n) => isHigh(n.t)).map((n) => n.lane))]
+    const low = [...new Set(notes.filter((n) => !isHigh(n.t)).map((n) => n.lane))]
+    expect([high.length, low.length]).toEqual([1, 1])
+    expect(high[0] ?? -1).toBeGreaterThan(low[0] ?? 99)
   })
 
   test('notes are colored by their beat subdivision', () => {

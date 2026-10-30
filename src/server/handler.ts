@@ -1,142 +1,170 @@
 import index from '../shared/chart-index.json'
-import { DIFFICULTIES, type Difficulty } from '../shared/analyze'
-import { JUDGMENTS, scoreOf, type ChartIndexEntry, type Counts, type ScoreRow, type ScoreSubmission } from '../shared/types'
+import { isArrayOf, isCounts, isDifficulty, isRecord, isRecordOf, isScoreRow, isString, isWhole, type Settings } from '../shared/guards'
+import { scoreOf, type ChartIndexEntry, type ScoreRow, type ScoreSubmission } from '../shared/types'
+import { CLEAR_COOKIE, hashPassword, isUser, newUser, sessionCookie, sessionUser, type User } from './session'
 
 export interface Store {
-  get<T>(key: string): Promise<T | null>
+  get(key: string): Promise<unknown>
   set(key: string, value: unknown): Promise<void>
 }
 
-type User = { name: string; salt: string; hash: string; created: string; settings: Settings }
-export type Settings = { offsetMs: number; speed: number }
+type Context = { readonly req: Request; readonly store: Store; readonly secret: string; readonly secure: boolean }
+type PublicRoute = (ctx: Context, params: readonly string[]) => Response | Promise<Response>
+type PrivateRoute = (ctx: Context, user: User) => Promise<Response>
+
 const DEFAULT_SETTINGS: Settings = { offsetMs: 0, speed: 1 }
-type Bests = Record<string, ScoreRow>
+const BOARD_SIZE = 20
+const HISTORY_SIZE = 50
+const HISTORY_SHOWN = 15
+const charts = new Map(index.map((c: ChartIndexEntry) => [c.slug, c]))
 
-const charts = new Map((index as ChartIndexEntry[]).map((c) => [c.slug, c]))
-const enc = new TextEncoder()
-const b64 = (b: ArrayBuffer | Uint8Array) => Buffer.from(b instanceof Uint8Array ? b : new Uint8Array(b)).toString('base64url')
+const USERNAME = /^[a-zA-Z0-9_-]{3,20}$/
+const userKey = (name: string) => `user/${name.toLowerCase()}`
+const boardKey = (slug: string, difficulty: string) => `board/${slug}/${difficulty}`
+const bestsKey = (name: string) => `bests/${name.toLowerCase()}`
+const historyKey = (name: string) => `history/${name.toLowerCase()}`
 
-async function hashPassword(password: string, salt: string) {
-  const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits'])
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 120_000 }, key, 256)
-  return b64(bits)
-}
-
-async function hmac(secret: string, data: string) {
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  return b64(await crypto.subtle.sign('HMAC', key, enc.encode(data)))
-}
-
-const SESSION_DAYS = 14
-async function sessionCookie(secret: string, name: string, secure: boolean) {
-  const exp = Date.now() + SESSION_DAYS * 864e5
-  const payload = `${encodeURIComponent(name)}.${exp}`
-  const value = `${payload}.${await hmac(secret, payload)}`
-  return `sess=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure ? '; Secure' : ''}`
-}
-
-async function sessionUser(req: Request, secret: string): Promise<string | null> {
-  const raw = (req.headers.get('cookie') ?? '').split(/;\s*/).find((c) => c.startsWith('sess='))?.slice(5)
-  if (!raw) return null
-  const [name, exp, sig] = raw.split('.')
-  if (!name || !exp || !sig || Number(exp) < Date.now()) return null
-  if ((await hmac(secret, `${name}.${exp}`)) !== sig) return null
-  return decodeURIComponent(name)
-}
+const isRows = isArrayOf(isScoreRow)
+const isBests = isRecordOf(isScoreRow)
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } })
 const fail = (status: number, error: string) => json({ error }, status)
 
-const USERNAME = /^[a-zA-Z0-9_-]{3,20}$/
-const userKey = (name: string) => `user/${name.toLowerCase()}`
-const boardKey = (slug: string, d: Difficulty) => `board/${slug}/${d}`
-const bestsKey = (name: string) => `bests/${name.toLowerCase()}`
-const historyKey = (name: string) => `history/${name.toLowerCase()}`
+async function bodyOf(req: Request): Promise<Record<string, unknown>> {
+  const parsed: unknown = await req.json().catch(() => null)
+  return isRecord(parsed) ? parsed : {}
+}
+
+async function read<T>(store: Store, key: string, guard: (v: unknown) => v is T, fallback: T): Promise<T> {
+  const value = await store.get(key)
+  return guard(value) ? value : fallback
+}
 
 export function validateSubmission(body: unknown): ScoreSubmission | string {
-  const b = body as Partial<ScoreSubmission>
-  const entry = typeof b?.slug === 'string' ? charts.get(b.slug) : undefined
-  if (!entry) return 'unknown song'
-  if (!DIFFICULTIES.includes(b.difficulty as Difficulty)) return 'unknown difficulty'
-  const counts = b.counts as Counts | undefined
-  if (!counts || !JUDGMENTS.every((j) => Number.isInteger(counts[j]) && counts[j] >= 0)) return 'counts must be whole numbers'
-  const total = entry.notes[b.difficulty as Difficulty]
-  const sum = JUDGMENTS.reduce((s, j) => s + counts[j], 0)
+  if (!isRecord(body)) return 'unknown song'
+  const { slug, difficulty, counts, maxCombo } = body
+  const entry = isString(slug) ? charts.get(slug) : undefined
+  if (entry === undefined || !isString(slug)) return 'unknown song'
+  if (!isDifficulty(difficulty)) return 'unknown difficulty'
+  if (!isCounts(counts)) return 'counts must be whole numbers'
+  const total = entry.notes[difficulty]
+  const sum = counts.perfect + counts.great + counts.good + counts.miss
   if (sum !== total) return `counts add up to ${sum}, but this chart has ${total} notes`
-  if (!Number.isInteger(b.maxCombo) || b.maxCombo! < 0 || b.maxCombo! > total - counts.miss) return 'max combo is impossible for these counts'
-  return { slug: b.slug!, difficulty: b.difficulty as Difficulty, counts, maxCombo: b.maxCombo!, cleared: b.cleared === true }
+  if (!isWhole(maxCombo) || maxCombo > total - counts.miss) return 'max combo is impossible for these counts'
+  return { slug, difficulty, counts, maxCombo, cleared: body['cleared'] === true }
+}
+
+async function credentials(req: Request) {
+  const { username, password } = await bodyOf(req)
+  if (!isString(username) || !USERNAME.test(username)) return 'Username: 3-20 letters, numbers, _ or -'
+  if (!isString(password) || password.length < 8) return 'Password: at least 8 characters'
+  return { username, password }
+}
+
+const signedIn = async (ctx: Context, user: User, status: number) =>
+  json({ name: user.name, settings: user.settings }, status, { 'set-cookie': await sessionCookie(ctx.secret, user.name, ctx.secure) })
+
+const signup: PublicRoute = async (ctx) => {
+  const creds = await credentials(ctx.req)
+  if (isString(creds)) return fail(400, creds)
+  if (isUser(await ctx.store.get(userKey(creds.username)))) return fail(409, 'That name is taken')
+  const user = await newUser(creds.username, creds.password, DEFAULT_SETTINGS)
+  await ctx.store.set(userKey(user.name), user)
+  return signedIn(ctx, user, 201)
+}
+
+const login: PublicRoute = async (ctx) => {
+  const creds = await credentials(ctx.req)
+  if (isString(creds)) return fail(400, creds)
+  const user = await ctx.store.get(userKey(creds.username))
+  if (!isUser(user) || (await hashPassword(creds.password, user.salt)) !== user.hash) return fail(401, 'Wrong username or password')
+  return signedIn(ctx, user, 200)
+}
+
+const logout: PublicRoute = () => json({ ok: true }, 200, { 'set-cookie': CLEAR_COOKIE })
+
+const session: PublicRoute = async (ctx) => json({ signedIn: (await sessionUser(ctx.req, ctx.secret)) !== null })
+
+const leaderboard: PublicRoute = async (ctx, [slug = '', difficulty = '']) => json(await read(ctx.store, boardKey(slug, difficulty), isRows, []))
+
+const me: PrivateRoute = async (ctx, user) => json({
+  name: user.name,
+  settings: user.settings,
+  bests: await read(ctx.store, bestsKey(user.name), isBests, {}),
+  history: (await read(ctx.store, historyKey(user.name), isRows, [])).slice(0, HISTORY_SHOWN),
+})
+
+function settingsFrom(body: Record<string, unknown>, current: Settings): Settings | string {
+  const offsetMs = Number(body['offsetMs'] ?? current.offsetMs)
+  const speed = Number(body['speed'] ?? current.speed)
+  if (!Number.isFinite(offsetMs) || Math.abs(offsetMs) > 300) return 'Offset must be within ±300 ms'
+  if (!Number.isFinite(speed) || speed < 0.5 || speed > 3) return 'Speed must be 0.5–3'
+  return { offsetMs: Math.round(offsetMs), speed: Math.round(speed * 10) / 10 }
+}
+
+const settings: PrivateRoute = async (ctx, user) => {
+  const next = settingsFrom(await bodyOf(ctx.req), user.settings)
+  if (isString(next)) return fail(400, next)
+  await ctx.store.set(userKey(user.name), { ...user, settings: next })
+  return json(next)
+}
+
+async function rankOnBoard(store: Store, row: ScoreRow, personalBest: boolean, best: ScoreRow) {
+  const key = boardKey(row.slug, row.difficulty)
+  const board = (await read(store, key, isRows, [])).filter((r) => r.user !== row.user || !personalBest)
+  if (personalBest) board.push(row)
+  const top = board.toSorted((a, b) => b.score - a.score || a.at.localeCompare(b.at)).slice(0, BOARD_SIZE)
+  await store.set(key, top)
+  const rank = top.findIndex((r) => r.user === row.user && r.score === best.score) + 1
+  return rank === 0 ? null : rank
+}
+
+const submit: PrivateRoute = async (ctx, user) => {
+  const sub = validateSubmission(await bodyOf(ctx.req))
+  if (isString(sub)) return fail(400, sub)
+  const total = charts.get(sub.slug)?.notes[sub.difficulty] ?? 0
+  const row: ScoreRow = { ...sub, user: user.name, ...scoreOf(sub.counts, total), at: new Date().toISOString() }
+  const history = await read(ctx.store, historyKey(user.name), isRows, [])
+  await ctx.store.set(historyKey(user.name), [row, ...history].slice(0, HISTORY_SIZE))
+  const bests = await read(ctx.store, bestsKey(user.name), isBests, {})
+  const key = `${sub.slug}/${sub.difficulty}`
+  const previous = bests[key]
+  const personalBest = previous === undefined || row.score > previous.score
+  if (personalBest) await ctx.store.set(bestsKey(user.name), { ...bests, [key]: row })
+  const rank = await rankOnBoard(ctx.store, row, personalBest, personalBest ? row : previous)
+  return json({ row, personalBest, previousBest: personalBest ? null : previous, rank })
+}
+
+const PUBLIC: readonly (readonly [string, RegExp, PublicRoute])[] = [
+  ['POST', /^\/signup$/, signup],
+  ['POST', /^\/login$/, login],
+  ['POST', /^\/logout$/, logout],
+  ['GET', /^\/session$/, session],
+  ['GET', /^\/leaderboard\/([a-z0-9-]+)\/(easy|normal|hard)$/, leaderboard],
+]
+
+const PRIVATE: readonly (readonly [string, RegExp, PrivateRoute])[] = [
+  ['GET', /^\/me$/, me],
+  ['PUT', /^\/me\/settings$/, settings],
+  ['POST', /^\/scores$/, submit],
+]
+
+async function currentUser(ctx: Context): Promise<User | null> {
+  const name = await sessionUser(ctx.req, ctx.secret)
+  if (name === null) return null
+  const user = await ctx.store.get(userKey(name))
+  return isUser(user) ? user : null
 }
 
 export async function handle(req: Request, store: Store, secret: string): Promise<Response> {
   const url = new URL(req.url)
+  const ctx: Context = { req, store, secret, secure: url.protocol === 'https:' }
   const path = url.pathname.replace(/^\/api/, '')
-  const secure = url.protocol === 'https:'
-  const body = async () => { try { return await req.json() } catch { return null } }
-
-  if (req.method === 'POST' && (path === '/signup' || path === '/login')) {
-    const { username, password } = ((await body()) ?? {}) as { username?: string; password?: string }
-    if (typeof username !== 'string' || !USERNAME.test(username)) return fail(400, 'Username: 3-20 letters, numbers, _ or -')
-    if (typeof password !== 'string' || password.length < 8) return fail(400, 'Password: at least 8 characters')
-    const existing = await store.get<User>(userKey(username))
-    if (path === '/signup') {
-      if (existing) return fail(409, 'That name is taken')
-      const salt = b64(crypto.getRandomValues(new Uint8Array(16)))
-      const user: User = { name: username, salt, hash: await hashPassword(password, salt), created: new Date().toISOString(), settings: DEFAULT_SETTINGS }
-      await store.set(userKey(username), user)
-      return json({ name: user.name, settings: user.settings }, 201, { 'set-cookie': await sessionCookie(secret, user.name, secure) })
-    }
-    if (!existing || (await hashPassword(password, existing.salt)) !== existing.hash) return fail(401, 'Wrong username or password')
-    return json({ name: existing.name, settings: existing.settings }, 200, { 'set-cookie': await sessionCookie(secret, existing.name, secure) })
-  }
-
-  if (req.method === 'POST' && path === '/logout') return json({ ok: true }, 200, { 'set-cookie': 'sess=; Path=/; Max-Age=0' })
-
-  const leaderboard = path.match(/^\/leaderboard\/([a-z0-9-]+)\/(easy|normal|hard)$/)
-  if (req.method === 'GET' && leaderboard) {
-    return json((await store.get<ScoreRow[]>(boardKey(leaderboard[1]!, leaderboard[2] as Difficulty))) ?? [])
-  }
-
-  const name = await sessionUser(req, secret)
-  if (req.method === 'GET' && path === '/session') return json({ signedIn: name !== null })
-  if (!name) return fail(401, 'Sign in first')
-  const user = await store.get<User>(userKey(name))
-  if (!user) return fail(401, 'Sign in first')
-
-  if (req.method === 'GET' && path === '/me') {
-    return json({ name: user.name, settings: user.settings, bests: (await store.get<Bests>(bestsKey(name))) ?? {}, history: ((await store.get<ScoreRow[]>(historyKey(name))) ?? []).slice(0, 15) })
-  }
-
-  if (req.method === 'PUT' && path === '/me/settings') {
-    const s = ((await body()) ?? {}) as Partial<Settings>
-    const offsetMs = Number(s.offsetMs ?? user.settings.offsetMs)
-    const speed = Number(s.speed ?? user.settings.speed)
-    if (!Number.isFinite(offsetMs) || Math.abs(offsetMs) > 300) return fail(400, 'Offset must be within ±300 ms')
-    if (!Number.isFinite(speed) || speed < 0.5 || speed > 3) return fail(400, 'Speed must be 0.5–3')
-    user.settings = { offsetMs: Math.round(offsetMs), speed: Math.round(speed * 10) / 10 }
-    await store.set(userKey(name), user)
-    return json(user.settings)
-  }
-
-  if (req.method === 'POST' && path === '/scores') {
-    const sub = validateSubmission(await body())
-    if (typeof sub === 'string') return fail(400, sub)
-    const total = charts.get(sub.slug)!.notes[sub.difficulty]
-    const row: ScoreRow = { ...sub, user: user.name, ...scoreOf(sub.counts, total), at: new Date().toISOString() }
-    const history = (await store.get<ScoreRow[]>(historyKey(name))) ?? []
-    await store.set(historyKey(name), [row, ...history].slice(0, 50))
-    const bests = (await store.get<Bests>(bestsKey(name))) ?? {}
-    const key = `${sub.slug}/${sub.difficulty}`
-    const personalBest = !bests[key] || row.score > bests[key]!.score
-    if (personalBest) { bests[key] = row; await store.set(bestsKey(name), bests) }
-    const board = ((await store.get<ScoreRow[]>(boardKey(sub.slug, sub.difficulty))) ?? []).filter((r) => r.user !== user.name || !personalBest)
-    if (personalBest) board.push(row)
-    board.sort((a, b) => b.score - a.score || a.at.localeCompare(b.at))
-    const top = board.slice(0, 20)
-    await store.set(boardKey(sub.slug, sub.difficulty), top)
-    const rank = top.findIndex((r) => r.user === user.name && r.score === (personalBest ? row.score : bests[key]!.score)) + 1
-    return json({ row, personalBest, previousBest: personalBest ? null : bests[key], rank: rank || null })
-  }
-
-  return fail(404, 'No such route')
+  const open = PUBLIC.map(([method, pattern, route]) => ({ route, match: req.method === method ? pattern.exec(path) : null })).find((r) => r.match !== null)
+  if (open !== undefined && open.match !== null) return open.route(ctx, open.match.slice(1))
+  const route = PRIVATE.find(([method, pattern]) => req.method === method && pattern.test(path))?.[2]
+  if (route === undefined) return fail(404, 'No such route')
+  const user = await currentUser(ctx)
+  return user === null ? fail(401, 'Sign in first') : route(ctx, user)
 }

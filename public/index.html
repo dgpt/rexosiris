@@ -110,6 +110,8 @@
   .results .row { justify-content:center; }
   .cal { text-align:center; } .beatdot { width:70px; height:70px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #fff, hsl(var(--hue),95%,62%)); margin:30px auto; box-shadow:0 0 40px hsla(var(--hue),95%,62%,.7); }
   @media (prefers-reduced-motion: reduce) { *, *::before { animation:none !important; } }
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);max-width:min(560px,92vw);padding:12px 18px;border-radius:12px;background:hsl(350 70% 22% / .92);border:1px solid hsl(350 80% 60% / .5);color:#fff;font:500 14px/1.4 'Space Grotesk',system-ui,sans-serif;box-shadow:0 10px 40px #0008;backdrop-filter:blur(10px);z-index:50;animation:toast-in .25s ease-out}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,10px)}}
 </style>
 </head>
 <body>
