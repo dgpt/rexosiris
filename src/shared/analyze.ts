@@ -276,6 +276,8 @@ export function laneBins(values: number[]): (v: number) => Lane {
   return (v) => lanes[cuts.filter((c) => v > c).length]!
 }
 
+const PARTNER: Record<Lane, Lane> = { 0: 1, 1: 0, 2: 3, 3: 2 }
+
 const quantOf = (slot: number): Quant => (slot % 4 === 0 ? 4 : slot % 2 === 0 ? 8 : 16)
 
 export function chartWithSections(a: Analysis, difficulty: Difficulty): { notes: Note[]; sections: Section[] } {
@@ -285,7 +287,7 @@ export function chartWithSections(a: Analysis, difficulty: Difficulty): { notes:
   const phraseLen = beat * BEATS_PER_PHRASE
   const { grid, perBeat, second, chords, holds } = TARGET[difficulty]
   const notes: Note[] = []
-  let prevLane: Lane = 1, prevT = -1, jack = 0
+  let prevLane: Lane = 1, prevT = -1
   secs.forEach((sec, p) => {
     const t0 = a.firstBeat + p * phraseLen, t1 = t0 + phraseLen
     const vi = VOICES.findIndex((v) => v.name === sec.voice)
@@ -317,11 +319,8 @@ export function chartWithSections(a: Analysis, difficulty: Difficulty): { notes:
       if (!bins.has(h.voice)) bins.set(h.voice, laneBins(kept.filter((k) => k.voice === h.voice).map((k) => k.timbre)))
       let lane = bins.get(h.voice)!(h.timbre)
       if (h.voice !== vi) lane = (3 - lane) as Lane
-      if (lane === prevLane) {
-        jack++
-        const close = h.t - prevT < beat * (difficulty === 'easy' ? 1.01 : 0.51)
-        if ((difficulty === 'easy' && close) || jack >= (difficulty === 'hard' ? 3 : 2)) { lane = ((lane + (h.timbre > 0.5 ? 1 : 3)) % 4) as Lane; jack = 0 }
-      } else jack = 0
+      const minGap = beat * (difficulty === 'easy' ? 1.01 : difficulty === 'normal' ? 0.6 : 0.3)
+      if (lane === prevLane && h.t - prevT < minGap) lane = PARTNER[lane]
       if (h.t - prevT < 1e-3) continue
       const note: Note = { t: round3(h.t), lane, q: quantOf(h.slot) }
       if (holds && (h.voice === 1 || h.voice === 2 || h.voice === 3) && h.sustain >= beat * 1.2) note.len = round3(Math.min(4, Math.floor((h.sustain / beat) * 2) / 2) * beat)

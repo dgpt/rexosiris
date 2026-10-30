@@ -1,13 +1,13 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { analyze, chartWithSections, DIFFICULTIES } from '../src/shared/analyze'
-import type { ChartIndexEntry, SongChart } from '../src/shared/types'
+import type { ChartIndexEntry, SongChart, TrackMeta } from '../src/shared/types'
 
 const pcmDir = process.argv[2]
 if (!pcmDir) throw new Error('usage: bun scripts/build-charts.ts <pcm-dir>')
 const SR = 22050
-const rows = readFileSync('scripts/tracks.tsv', 'utf8').trim().split('\n').map((l) => l.split('\t'))
+const tracks = JSON.parse(readFileSync('scripts/tracks.json', 'utf8')) as TrackMeta[]
 const index: ChartIndexEntry[] = []
-for (const [album = '', slug = '', title = ''] of rows) {
+for (const { slug, title, artist, album, track } of tracks) {
   const buf = readFileSync(`${pcmDir}/${slug}.f32`)
   const pcm = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4)
   const t0 = performance.now()
@@ -15,9 +15,9 @@ for (const [album = '', slug = '', title = ''] of rows) {
   const built = Object.fromEntries(DIFFICULTIES.map((d) => [d, chartWithSections(a, d)]))
   const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, built[d]!.notes])) as SongChart['charts']
   const sections = built.hard!.sections
-  const song: SongChart = { slug: slug!, album: album!, title: title!, bpm: a.bpm, firstBeat: Math.round(a.firstBeat * 1000) / 1000, duration: Math.round(a.duration * 10) / 10, charts, sections }
+  const song: SongChart = { slug, album, title, artist, bpm: a.bpm, firstBeat: Math.round(a.firstBeat * 1000) / 1000, duration: Math.round(a.duration * 10) / 10, charts, sections }
   writeFileSync(`public/charts/${slug}.json`, JSON.stringify(song))
-  index.push({ slug: slug!, album: album!, title: title!, bpm: song.bpm, duration: song.duration, notes: Object.fromEntries(DIFFICULTIES.map((d) => [d, charts[d].length])) as ChartIndexEntry['notes'], voices: sections.map((x) => x.voice).filter((v, i, all) => i === 0 || all[i - 1] !== v), holds: Object.fromEntries(DIFFICULTIES.map((d) => [d, charts[d].filter((n) => n.len).length])) as ChartIndexEntry['notes'] })
+  index.push({ slug, album, title, artist, track, bpm: song.bpm, duration: song.duration, notes: Object.fromEntries(DIFFICULTIES.map((d) => [d, charts[d].length])) as ChartIndexEntry['notes'], voices: sections.map((x) => x.voice).filter((v, i, all) => i === 0 || all[i - 1] !== v), holds: Object.fromEntries(DIFFICULTIES.map((d) => [d, charts[d].filter((n) => n.len).length])) as ChartIndexEntry['notes'] })
   console.log(`${slug.padEnd(28)} ${a.bpm.toFixed(2).padStart(7)} bpm  beat0 ${song.firstBeat}s  ${DIFFICULTIES.map((d) => `${d}:${charts[d].length}`).join(' ')}  ${Math.round(performance.now() - t0)}ms  ${[...new Set(sections.map((x) => x.voice))].join('/')}  ${sections.map((x) => x.voice[0]).join('')}`)
 }
 writeFileSync('public/charts/index.json', JSON.stringify(index))

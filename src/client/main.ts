@@ -10,10 +10,11 @@ let me: Me | null = null
 let songs: ChartIndexEntry[] = []
 let ctx: AudioContext | null = null
 const audio = new Map<string, Promise<AudioBuffer>>()
-const ALBUM_BLURB: Record<string, string> = {
-  'what is real': 'ten tracks',
-  e: 'ten tracks',
-}
+const albumsOf = (list: ChartIndexEntry[]) => [...new Set(list.map((s) => s.album))]
+const inAlbum = (list: ChartIndexEntry[], album: string) =>
+  list.filter((s) => s.album === album).sort((a, b) => (a.track ?? 99) - (b.track ?? 99))
+const playOrder = () => albumsOf(songs).flatMap((al) => inAlbum(songs, al))
+const ARTIST = 'REXOSIRIS'
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
@@ -48,8 +49,8 @@ function auth(error = '') {
   app.innerHTML = `
     <section class="hero">
       <div class="logo" aria-hidden="true"><span>←</span><span>↓</span><span>↑</span><span>→</span></div>
-      <h1 class="title">what is real<span class="dot">.</span></h1>
-      <p class="lede">A rhythm game where every track is mine. Two albums, twenty songs, and charts that listen to the music and follow the kick, the snare, the lead, whatever is driving each phrase.</p>
+      <h1 class="title">${ARTIST}<span class="dot">.</span></h1>
+      <p class="lede">A rhythm game where every track is mine. Two albums, <i>what comes next?</i> and <i>e</i>, twenty songs, and charts that listen to the music and follow the kick, the snare, the lead, whatever is driving each phrase.</p>
       <form id="f" class="card glass">
         <label>Username <input name="username" autocomplete="username" required minlength="3" maxlength="20"></label>
         <label>Password <input name="password" type="password" autocomplete="current-password" required minlength="8"></label>
@@ -76,13 +77,13 @@ let chosen: { slug: string; difficulty: Difficulty } = { slug: '', difficulty: '
 function select(withPreview = false) {
   if (!me) return auth()
   document.body.dataset.screen = 'select'
-  if (!chosen.slug) chosen.slug = songs.find((s) => s.album === 'what is real')?.slug ?? songs[0]!.slug
-  const albums = ['what is real', 'e'].filter((al) => songs.some((s) => s.album === al))
+  if (!chosen.slug) chosen.slug = playOrder()[0]!.slug
+  const albums = albumsOf(songs)
   const cur = songs.find((s) => s.slug === chosen.slug)!
   document.documentElement.style.setProperty('--hue', String(hueOf(cur.slug)))
   app.innerHTML = `
     <header class="top">
-      <h1 class="brand">what is real<span class="dot">.</span></h1>
+      <h1 class="brand">${ARTIST}<span class="dot">.</span></h1>
       <nav><span class="who">${esc(me.name)}</span><button id="cal" class="ghost">Calibrate · ${me.settings.offsetMs} ms</button>
       <label class="speed">Speed <input id="speed" type="range" min="0.5" max="3" step="0.1" value="${me.settings.speed}"><output>${me.settings.speed}×</output></label>
       <label class="ghost upload">Chart your own track<input id="upload" type="file" accept="audio/*" hidden></label>
@@ -90,12 +91,12 @@ function select(withPreview = false) {
     </header>
     <main class="select">
       <div class="songs">${albums.map((al) => `
-        <section class="album"><h2>${esc(al)}<small>${ALBUM_BLURB[al] ?? ''}</small></h2>
-        <ul>${songs.filter((s) => s.album === al).map((s) => {
+        <section class="album"><h2>${esc(al)}<small>${esc(inAlbum(songs, al)[0]?.artist ?? '')} · ${inAlbum(songs, al).length} tracks</small></h2>
+        <ul>${inAlbum(songs, al).map((s) => {
           const best = me!.bests[`${s.slug}/${chosen.difficulty}`]
           return `<li><button class="song ${s.slug === chosen.slug ? 'on' : ''}" data-slug="${s.slug}" style="--h:${hueOf(s.slug)}">
             <span class="swatch" aria-hidden="true"></span>
-            <span class="t">${esc(s.title)}</span><span class="m">${Math.round(s.bpm)} bpm · ${fmtTime(s.duration)}</span>
+            <span class="t">${s.track ? `<span class="no">${s.track}</span>` : ''}${esc(s.title)}</span><span class="m">${Math.round(s.bpm)} bpm · ${fmtTime(s.duration)}</span>
             <span class="g ${best ? `g-${best.grade}` : ''}">${best ? best.grade : ''}</span></button></li>`
         }).join('')}</ul></section>`).join('')}
       </div>
@@ -121,7 +122,8 @@ async function detail() {
   el.innerHTML = `
     <div class="cover" aria-hidden="true"><div class="disc"></div></div>
     <h2>${esc(s.title)}</h2>
-    <p class="meta">${esc(s.album)} · ${Math.round(s.bpm)} bpm · ${fmtTime(s.duration)}</p>
+    <p class="meta">${esc(s.artist)} · <i>${esc(s.album)}</i>${s.track ? ` · track ${s.track}` : ''}</p>
+    <p class="meta">${Math.round(s.bpm)} bpm · ${fmtTime(s.duration)}</p>
     ${s.voices?.length ? `<p class="path" title="The instrument the chart follows, phrase by phrase">${s.voices.slice(0, 9).map((v) => `<span class="tag">${v === 'air' ? 'cymbals' : v}</span>`).join('<span class="arrow">→</span>')}${s.voices.length > 9 ? '<span class="arrow">…</span>' : ''}</p>` : ''}
     <div class="diffs" role="radiogroup" aria-label="Difficulty">${DIFFICULTIES.map((d) => `
       <button role="radio" aria-checked="${d === chosen.difficulty}" data-d="${d}" class="${d === chosen.difficulty ? 'on' : ''}">${d}<small>${s.notes[d]} notes${s.holds?.[d] ? ` · ${s.holds[d]} holds` : ''}</small></button>`).join('')}
@@ -269,7 +271,7 @@ async function runCalibration() {
 addEventListener('keydown', (e: KeyboardEvent) => {
   if (document.body.dataset.screen !== 'select' || !me || !document.getElementById('detail')) return
   if ((e.target as HTMLElement)?.tagName === 'INPUT') return
-  const order = ['what is real', 'e'].flatMap((al) => songs.filter((s) => s.album === al))
+  const order = playOrder()
   const i = order.findIndex((s) => s.slug === chosen.slug)
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()

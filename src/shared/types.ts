@@ -4,6 +4,7 @@ export type SongChart = {
   slug: string
   album: string
   title: string
+  artist?: string
   bpm: number
   firstBeat: number
   duration: number
@@ -15,6 +16,8 @@ export type ChartIndexEntry = {
   slug: string
   album: string
   title: string
+  artist: string
+  track: number | null
   bpm: number
   duration: number
   notes: Record<Difficulty, number>
@@ -46,4 +49,13 @@ export function gradeOf(accuracy: number, misses: number) {
   if (accuracy >= 0.8) return 'B'
   if (accuracy >= 0.7) return 'C'
   return 'D'
+}
+
+export type TrackMeta = {
+  file: string
+  slug: string
+  title: string
+  artist: string
+  album: string
+  track: number | null
 }

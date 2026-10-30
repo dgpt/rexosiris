@@ -1,6 +1,6 @@
-# what is real.
+# REXOSIRIS. — a rhythm game
 
-A StepMania / Crypt of the NecroDancer–style rhythm game where every track is mine: two of my albums, *e* and *what is real*, twenty songs.
+A StepMania / Crypt of the NecroDancer–style rhythm game where every track is mine. I release music as REXOSIRIS, and the game plays two of my albums, *what comes next?* and *e*: twenty songs, titled, ordered and credited from the files' own tags (`scripts/read-tags.ts`).
 
 **Play it:** https://what-is-real-rhythm.netlify.app (make an account, pick a song, arrow keys or D F J K, taps on a phone)
 
