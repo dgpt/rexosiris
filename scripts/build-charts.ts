@@ -17,7 +17,7 @@ for (const [album = '', slug = '', title = ''] of rows) {
   const sections = built.hard!.sections
   const song: SongChart = { slug: slug!, album: album!, title: title!, bpm: a.bpm, firstBeat: Math.round(a.firstBeat * 1000) / 1000, duration: Math.round(a.duration * 10) / 10, charts, sections }
   writeFileSync(`public/charts/${slug}.json`, JSON.stringify(song))
-  index.push({ slug: slug!, album: album!, title: title!, bpm: song.bpm, duration: song.duration, notes: Object.fromEntries(DIFFICULTIES.map((d) => [d, charts[d].length])) as ChartIndexEntry['notes'] })
+  index.push({ slug: slug!, album: album!, title: title!, bpm: song.bpm, duration: song.duration, notes: Object.fromEntries(DIFFICULTIES.map((d) => [d, charts[d].length])) as ChartIndexEntry['notes'], voices: sections.map((x) => x.voice).filter((v, i, all) => i === 0 || all[i - 1] !== v), holds: Object.fromEntries(DIFFICULTIES.map((d) => [d, charts[d].filter((n) => n.len).length])) as ChartIndexEntry['notes'] })
   console.log(`${slug.padEnd(28)} ${a.bpm.toFixed(2).padStart(7)} bpm  beat0 ${song.firstBeat}s  ${DIFFICULTIES.map((d) => `${d}:${charts[d].length}`).join(' ')}  ${Math.round(performance.now() - t0)}ms  ${[...new Set(sections.map((x) => x.voice))].join('/')}  ${sections.map((x) => x.voice[0]).join('')}`)
 }
 writeFileSync('public/charts/index.json', JSON.stringify(index))

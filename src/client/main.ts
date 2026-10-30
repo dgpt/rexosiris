@@ -122,8 +122,9 @@ async function detail() {
     <div class="cover" aria-hidden="true"><div class="disc"></div></div>
     <h2>${esc(s.title)}</h2>
     <p class="meta">${esc(s.album)} · ${Math.round(s.bpm)} bpm · ${fmtTime(s.duration)}</p>
+    ${s.voices?.length ? `<p class="path" title="The instrument the chart follows, phrase by phrase">${s.voices.slice(0, 9).map((v) => `<span class="tag">${v === 'air' ? 'cymbals' : v}</span>`).join('<span class="arrow">→</span>')}${s.voices.length > 9 ? '<span class="arrow">…</span>' : ''}</p>` : ''}
     <div class="diffs" role="radiogroup" aria-label="Difficulty">${DIFFICULTIES.map((d) => `
-      <button role="radio" aria-checked="${d === chosen.difficulty}" data-d="${d}" class="${d === chosen.difficulty ? 'on' : ''}">${d}<small>${s.notes[d]} notes · ${(s.notes[d] / s.duration).toFixed(1)}/s</small></button>`).join('')}
+      <button role="radio" aria-checked="${d === chosen.difficulty}" data-d="${d}" class="${d === chosen.difficulty ? 'on' : ''}">${d}<small>${s.notes[d]} notes${s.holds?.[d] ? ` · ${s.holds[d]} holds` : ''}</small></button>`).join('')}
     </div>
     <p class="best">${best ? `Your best <b class="g-${best.grade}">${best.grade}</b> ${best.score.toLocaleString()} · combo ${best.maxCombo}` : 'Not played on this difficulty yet.'}</p>
     <button id="go" class="play">Play</button>

@@ -18,6 +18,8 @@ export type ChartIndexEntry = {
   bpm: number
   duration: number
   notes: Record<Difficulty, number>
+  voices?: string[]
+  holds?: Record<Difficulty, number>
 }
 
 export type Judgment = 'perfect' | 'great' | 'good' | 'miss'
