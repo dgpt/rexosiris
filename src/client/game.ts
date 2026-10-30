@@ -89,8 +89,22 @@ export function play(opts: {
       record(j, performance.now())
     }
     const onUp = (e: KeyboardEvent) => { const lane = KEYS[e.code]; if (lane !== undefined) held[lane] = false }
+    const codeOf: string[] = ['ArrowLeft', 'ArrowDown', 'ArrowUp', 'ArrowRight']
+    const laneAt = (x: number) => {
+      const r = canvas.getBoundingClientRect()
+      const laneW = Math.min(90, r.width / 6), x0 = r.width / 2 - laneW * 2
+      const l = Math.floor((x - r.left - x0) / laneW)
+      return l >= 0 && l < 4 ? l : Math.max(0, Math.min(3, Math.floor(((x - r.left) / r.width) * 4)))
+    }
+    const onTouch = (e: TouchEvent) => {
+      e.preventDefault()
+      for (const t of Array.from(e.changedTouches)) onDown(new KeyboardEvent('keydown', { code: codeOf[laneAt(t.clientX)] }))
+    }
+    const onTouchEnd = (e: TouchEvent) => { for (const t of Array.from(e.changedTouches)) held[laneAt(t.clientX)] = false }
     addEventListener('keydown', onDown)
     addEventListener('keyup', onUp)
+    canvas.addEventListener('touchstart', onTouch, { passive: false })
+    canvas.addEventListener('touchend', onTouchEnd)
 
     const frame = () => {
       if (done) return

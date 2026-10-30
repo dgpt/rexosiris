@@ -3,6 +3,7 @@ import { JUDGMENTS, scoreOf, type ChartIndexEntry, type SongChart } from '../sha
 import { api, type Me } from './api'
 import { play } from './game'
 import { calibrate } from './calibrate'
+import { chartFromFile } from './custom'
 
 const app = document.getElementById('app')!
 let me: Me | null = null
@@ -10,8 +11,8 @@ let songs: ChartIndexEntry[] = []
 let ctx: AudioContext | null = null
 const audio = new Map<string, Promise<AudioBuffer>>()
 const ALBUMS: Record<string, string> = {
-  e: 'e — ten tracks from the first record',
-  'what is real': 'what is real — the second one',
+  e: 'e',
+  'what is real': 'what is real',
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
@@ -65,6 +66,7 @@ function select() {
       <h1>what is real<span class="dot">.</span></h1>
       <nav><span>${esc(me.name)}</span><button id="cal" class="ghost">Calibrate (${me.settings.offsetMs} ms)</button>
       <label class="speed">Speed <input id="speed" type="range" min="0.5" max="3" step="0.1" value="${me.settings.speed}"><output>${me.settings.speed}×</output></label>
+      <label class="ghost upload">Chart your own track<input id="upload" type="file" accept="audio/*" hidden></label>
       <button id="out" class="ghost">Sign out</button></nav>
     </header>
     <main class="select">
@@ -78,9 +80,11 @@ function select() {
         }).join('')}</ul>`).join('')}
       </div>
       <aside class="detail" id="detail"></aside>
-    </main>`
+    </main>
+    <section class="recent"><h2>Your recent plays</h2>${me.history.length ? `<ol>${me.history.slice(0, 8).map((r) => `<li><span>${esc(songs.find((x) => x.slug === r.slug)?.title ?? r.slug)}</span><span>${r.difficulty}</span><span class="g-${r.grade}">${r.grade}</span><span>${(r.accuracy * 100).toFixed(1)}%</span><time>${new Date(r.at).toLocaleString()}</time></li>`).join('')}</ol>` : '<p class="muted">Nothing yet. Pick a song.</p>'}</section>`
   document.getElementById('out')!.onclick = async () => { await api.logout(); me = null; auth() }
   document.getElementById('cal')!.onclick = () => runCalibration()
+  ;(document.getElementById('upload') as HTMLInputElement).onchange = (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) custom(f) }
   const speed = document.getElementById('speed') as HTMLInputElement
   speed.oninput = () => (speed.nextElementSibling!.textContent = `${speed.value}×`)
   speed.onchange = async () => { me!.settings = await api.settings({ speed: Number(speed.value) }) }
@@ -114,6 +118,32 @@ async function start() {
   const s = songs.find((x) => x.slug === chosen.slug)!
   app.innerHTML = `<div class="loading">Loading ${esc(s.title)}…</div>`
   const [chartData, buffer] = await Promise.all([fetch(`/charts/${s.slug}.json`).then((r) => r.json() as Promise<SongChart>), loadAudio(s.slug)])
+  return run(chartData, buffer, true)
+}
+
+let lastCustom: { song: SongChart; buffer: AudioBuffer } | null = null
+async function custom(file: File) {
+  app.innerHTML = `<div class="loading" id="stagemsg">Reading ${esc(file.name)}…</div>`
+  try {
+    lastCustom = await chartFromFile(audioCtx(), file, (m) => (document.getElementById('stagemsg')!.textContent = m))
+  } catch (err) {
+    app.innerHTML = `<section class="card"><h2>Couldn't chart that file</h2><p class="muted">${esc((err as Error).message || 'The browser could not decode it.')}</p><div class="row"><button id="back">Back</button></div></section>`
+    document.getElementById('back')!.onclick = () => select()
+    return
+  }
+  const { song } = lastCustom
+  app.innerHTML = `<section class="card"><h2>${esc(song.title)}</h2>
+    <p class="meta">${song.bpm.toFixed(1)} bpm · ${fmtTime(song.duration)} · charted in your browser by the same analyzer that charted my albums</p>
+    <div class="diffs" role="radiogroup" aria-label="Difficulty">${DIFFICULTIES.map((d) => `<button role="radio" aria-checked="${d === chosen.difficulty}" data-d="${d}" class="${d === chosen.difficulty ? 'on' : ''}">${d}<small>${song.charts[d].length} notes</small></button>`).join('')}</div>
+    <p class="muted">Your own tracks aren't ranked. The leaderboards are for the albums.</p>
+    <div class="row"><button id="go" class="play">Play ▶</button><button id="back" class="ghost">Back</button></div></section>`
+  app.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) => (b.onclick = () => { chosen.difficulty = b.dataset.d as Difficulty; app.querySelectorAll('[data-d]').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)) }) }))
+  document.getElementById('go')!.onclick = () => run(song, lastCustom!.buffer, false)
+  document.getElementById('back')!.onclick = () => select()
+}
+
+async function run(chartData: SongChart, buffer: AudioBuffer, ranked: boolean) {
+  const s = { title: chartData.title, slug: chartData.slug }
   await audioCtx().resume()
   app.innerHTML = `<canvas id="stage" class="stage"></canvas>`
   const result = await play({
@@ -122,7 +152,7 @@ async function start() {
     bpm: chartData.bpm, firstBeat: chartData.firstBeat, offsetMs: me!.settings.offsetMs, speed: me!.settings.speed, title: s.title,
   })
   if (result.quit) return select()
-  const total = s.notes[chosen.difficulty]
+  const total = chartData.charts[chosen.difficulty].length
   const local = scoreOf(result.counts, total)
   app.innerHTML = `<section class="card results"><h2>${esc(s.title)} · ${chosen.difficulty}</h2>
     <div class="grade g-${local.grade}">${local.grade}</div>
@@ -130,8 +160,9 @@ async function start() {
     <ul class="counts">${JUDGMENTS.map((j) => `<li class="${j}"><span>${j}</span><b>${result.counts[j]}</b></li>`).join('')}<li><span>max combo</span><b>${result.maxCombo}</b></li></ul>
     <p id="saved" class="muted">Saving…</p>
     <div class="row"><button id="again">Retry</button><button id="back" class="ghost">Song select</button></div></section>`
-  document.getElementById('again')!.onclick = () => start()
+  document.getElementById('again')!.onclick = () => (ranked ? start() : run(chartData, buffer, false))
   document.getElementById('back')!.onclick = () => select()
+  if (!ranked) { document.getElementById('saved')!.textContent = 'Your own track: not ranked.'; return }
   try {
     const r = await api.submit({ slug: s.slug, difficulty: chosen.difficulty, counts: result.counts, maxCombo: result.maxCombo, cleared: result.cleared })
     me = await api.me()
