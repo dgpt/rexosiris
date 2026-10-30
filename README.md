@@ -74,6 +74,9 @@ What the checks caught:
 - Five songs charted zero notes, because of an off-by-one at a negative first beat.
 - Raw salience let the hats win every phrase.
 - The arrows were drawn rotated the wrong way.
+- A touch the phone cancels (an edge swipe, a notification) never sent touchend, so its lane stayed held and a hold note scored OK with no finger on it. A probe that cancels a touch mid-hold read "1 OK" before the fix and "1 NG" after.
+- On a phone the only way out of a song was Esc. There is now a × outside the lane columns.
+- An earlier revert had quietly dropped the lint script from package.json, so the gate wasn't running at all.
 
 Next:
 - A per-song chart editor for the moments the analyzer gets wrong.
