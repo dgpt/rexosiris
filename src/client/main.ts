@@ -198,9 +198,10 @@ async function results(chartData: SongChart, buffer: AudioBuffer, ranked: boolea
   app.innerHTML = `<section class="results glass">
     <p class="kicker">${esc(chartData.title)} · ${chosen.difficulty}</p>
     <div class="grade g-${local.grade}" id="grade">${local.grade}</div>
-    ${result.counts.miss === 0 ? `<p class="fc">${result.counts.great + result.counts.good === 0 ? 'ALL PERFECT' : 'FULL COMBO'}</p>` : ''}
+    ${result.counts.miss === 0 && result.holds.ng === 0 ? `<p class="fc">${result.counts.great + result.counts.good === 0 ? 'ALL PERFECT' : 'FULL COMBO'}</p>` : ''}
     <p class="score"><span id="score">0</span><small>${(local.accuracy * 100).toFixed(2)}%${result.cleared ? '' : ' · <span class="failed">health ran out</span>'}</small></p>
     <ul class="counts">${JUDGMENTS.map((j) => `<li class="${j}"><span>${j}</span><b>${result.counts[j]}</b></li>`).join('')}<li class="combo"><span>max combo</span><b>${result.maxCombo}</b></li></ul>
+    ${result.holds.ok + result.holds.ng ? `<p class="muted">Holds ${result.holds.ok} OK · ${result.holds.ng} NG</p>` : ''}
     <figure class="timing"><canvas id="timing" width="560" height="140" aria-label="Timing of every hit"></canvas>
       <figcaption>Every hit, early above the line and late below. Average ${mean >= 0 ? '+' : ''}${mean.toFixed(0)} ms${Math.abs(mean) > 18 ? ` · try Calibrate${mean > 0 ? ' (you hit late)' : ' (you hit early)'}` : ''}</figcaption></figure>
     <p id="saved" class="muted">${ranked ? 'Saving…' : 'Your own track: not ranked.'}</p>

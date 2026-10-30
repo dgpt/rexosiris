@@ -21,7 +21,7 @@ export type VoiceName = (typeof VOICES)[number]['name']
 
 export type Lane = 0 | 1 | 2 | 3
 export type Quant = 4 | 8 | 16
-export type Note = { t: number; lane: Lane; q?: Quant }
+export type Note = { t: number; lane: Lane; q?: Quant; len?: number }
 export type Section = { t: number; voice: VoiceName; energy: number }
 export type Difficulty = 'easy' | 'normal' | 'hard'
 export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard']
@@ -34,6 +34,7 @@ export type Analysis = {
   envelope: Float32Array
   bandFlux: Float32Array[]
   bandCentroid: Float32Array[]
+  bandLevel: Float32Array[]
   rms: Float32Array
 }
 
@@ -75,6 +76,7 @@ export function analyze(pcm: Float32Array, sampleRate: number): Analysis {
   const prev = new Float64Array(FRAME / 2)
   const bandFlux = VOICES.map(() => new Float32Array(frames))
   const bandCentroid = VOICES.map(() => new Float32Array(frames))
+  const bandLevel = VOICES.map(() => new Float32Array(frames))
   const envelope = new Float32Array(frames)
   const rms = new Float32Array(frames)
   const re = new Float64Array(FRAME), im = new Float64Array(FRAME)
@@ -87,15 +89,17 @@ export function analyze(pcm: Float32Array, sampleRate: number): Analysis {
     let total = 0
     for (let b = 0; b < bandBins.length; b++) {
       const [lo, hi] = bandBins[b]!
-      let flux = 0, wsum = 0, msum = 0
+      let flux = 0, wsum = 0, msum = 0, level = 0
       for (let k = lo; k < hi; k++) {
         const mag = Math.log1p(10 * Math.hypot(re[k]!, im[k]!))
+        level += mag
         const d = mag - prev[k]!
         if (d > 0) { flux += d; wsum += d * k }
         msum += d > 0 ? d : 0
         prev[k] = mag
       }
       bandFlux[b]![f] = flux / (hi - lo)
+      bandLevel[b]![f] = level / (hi - lo)
       bandCentroid[b]![f] = msum > 0 ? (wsum / msum - lo) / Math.max(1, hi - lo) : 0.5
       total += flux / (hi - lo)
     }
@@ -108,7 +112,7 @@ export function analyze(pcm: Float32Array, sampleRate: number): Analysis {
   let bpm = estimateTempo(envelope, fps)
   let phase = estimatePhase(envelope, fps, bpm)
   for (let pass = 0; pass < 3; pass++) ({ bpm, phase } = refineGrid(envelope, fps, bpm, phase))
-  return { sampleRate, duration: pcm.length / sampleRate, bpm, firstBeat: phase + frameCenter(sampleRate), envelope, bandFlux, bandCentroid, rms }
+  return { sampleRate, duration: pcm.length / sampleRate, bpm, firstBeat: phase + frameCenter(sampleRate), envelope, bandFlux, bandCentroid, bandLevel, rms }
 }
 
 const frameCenter = (sampleRate: number) => FRAME / 2 / sampleRate
@@ -176,7 +180,7 @@ export function refineGrid(env: Float32Array, fps: number, bpm: number, phase: n
 }
 
 
-type Hit = { t: number; slot: number; strength: number; timbre: number; voice: number }
+type Hit = { t: number; slot: number; strength: number; timbre: number; voice: number; sustain: number }
 
 export function voiceHits(a: Analysis, voice: number): Hit[] {
   const fps = a.sampleRate / HOP
@@ -198,16 +202,27 @@ export function voiceHits(a: Analysis, voice: number): Hit[] {
     const slot = Math.round((t - a.firstBeat) / step)
     const snapped = a.firstBeat + slot * step
     if (Math.abs(snapped - t) > 0.045 || snapped < 1.2 || snapped > a.duration - 0.8) continue
-    out.push({ t: snapped, slot, strength: v - mean, timbre: cent[i]!, voice })
+    out.push({ t: snapped, slot, strength: v - mean, timbre: cent[i]!, voice, sustain: sustainAfter(a.bandLevel[voice]!, i, fps) })
   }
   return out
 }
 
+function sustainAfter(level: Float32Array, i: number, fps: number): number {
+  const at = (k: number) => ((level[k - 1] ?? 0) + (level[k] ?? 0) + (level[k + 1] ?? 0)) / 3
+  const ref = Math.max(at(i + 2), at(i + 4))
+  const floor = Math.min(at(i - 4), at(i - 2))
+  if (ref - floor < 0.03) return 0
+  let j = i + 4
+  const limit = Math.min(level.length - 1, i + Math.round(4 * fps))
+  while (j < limit && at(j) >= floor + (ref - floor) * 0.4) j++
+  return (j - i) / fps
+}
+
 const BEATS_PER_PHRASE = 16
-const TARGET: Record<Difficulty, { grid: 1 | 2 | 4; perBeat: number; second: boolean; chords: boolean }> = {
-  easy: { grid: 1, perBeat: 0.55, second: false, chords: false },
-  normal: { grid: 2, perBeat: 1.05, second: false, chords: false },
-  hard: { grid: 4, perBeat: 1.9, second: true, chords: true },
+const TARGET: Record<Difficulty, { grid: 1 | 2 | 4; perBeat: number; second: boolean; chords: boolean; holds: boolean }> = {
+  easy: { grid: 1, perBeat: 0.55, second: false, chords: false, holds: false },
+  normal: { grid: 2, perBeat: 1.05, second: false, chords: false, holds: true },
+  hard: { grid: 4, perBeat: 1.9, second: true, chords: true, holds: true },
 }
 
 const VOICE_WEIGHT = [1.0, 0.85, 1.15, 1.2, 0.8, 0.45]
@@ -268,7 +283,7 @@ export function chartWithSections(a: Analysis, difficulty: Difficulty): { notes:
   const secs = sections(a, hits)
   const beat = 60 / a.bpm
   const phraseLen = beat * BEATS_PER_PHRASE
-  const { grid, perBeat, second, chords } = TARGET[difficulty]
+  const { grid, perBeat, second, chords, holds } = TARGET[difficulty]
   const notes: Note[] = []
   let prevLane: Lane = 1, prevT = -1, jack = 0
   secs.forEach((sec, p) => {
@@ -308,13 +323,28 @@ export function chartWithSections(a: Analysis, difficulty: Difficulty): { notes:
         if ((difficulty === 'easy' && close) || jack >= (difficulty === 'hard' ? 3 : 2)) { lane = ((lane + (h.timbre > 0.5 ? 1 : 3)) % 4) as Lane; jack = 0 }
       } else jack = 0
       if (h.t - prevT < 1e-3) continue
-      notes.push({ t: round3(h.t), lane, q: quantOf(h.slot) })
+      const note: Note = { t: round3(h.t), lane, q: quantOf(h.slot) }
+      if (holds && (h.voice === 1 || h.voice === 2 || h.voice === 3) && h.sustain >= beat * 1.2) note.len = round3(Math.min(4, Math.floor((h.sustain / beat) * 2) / 2) * beat)
+      notes.push(note)
       if (chords && h.slot % 16 === 0 && h.strength > 0.35) notes.push({ t: round3(h.t), lane: ((lane + 2) % 4) as Lane, q: 4 })
       prevLane = lane
       prevT = h.t
     }
   })
-  return { notes, sections: secs }
+  return { notes: trimHolds(notes, beat), sections: secs }
+}
+
+function trimHolds(notes: Note[], beat: number): Note[] {
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i]!
+    if (!n.len) continue
+    const nextSame = notes.slice(i + 1).find((m) => m.lane === n.lane)
+    const room = nextSame ? nextSame.t - n.t - beat * 0.5 : n.len
+    const len = Math.min(n.len, Math.floor((room / beat) * 2) / 2 * beat)
+    if (len >= beat) n.len = round3(len)
+    else delete n.len
+  }
+  return notes
 }
 
 export function chart(a: Analysis, difficulty: Difficulty): Note[] {

@@ -12,8 +12,8 @@ const VOICE_LABEL: Record<string, string> = { kick: 'KICK', bass: 'BASS', snare:
 const MISS_MS = WINDOWS_MS.good
 const FEVER_AT = 30
 
-export type GameResult = { counts: Counts; maxCombo: number; cleared: boolean; quit: boolean; offsets: { t: number; ms: number | null }[] }
-type Live = Note & { hit: boolean; judged?: Judgment }
+export type GameResult = { counts: Counts; maxCombo: number; cleared: boolean; quit: boolean; offsets: { t: number; ms: number | null }[]; holds: { ok: number; ng: number } }
+type Live = Note & { hit: boolean; judged?: Judgment; hold?: 'active' | 'ok' | 'ng' | 'dead' }
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }
 type Ring = { x: number; y: number; born: number; color: string }
 
@@ -47,6 +47,9 @@ export function play(opts: {
   let combo = 0, maxCombo = 0, health = 0.6, cleared = true
   let flash: { text: Judgment; at: number; ms: number | null } | null = null
   let milestone: { text: string; at: number } | null = null
+  const activeHolds: (Live | null)[] = [null, null, null, null]
+  const holdMark: { lane: number; ok: boolean; at: number }[] = []
+  let holdsOk = 0, holdsNg = 0
   const laneFlash = [-1e9, -1e9, -1e9, -1e9]
   const held = [false, false, false, false]
   const particles: Particle[] = []
@@ -103,7 +106,7 @@ export function play(opts: {
       removeEventListener('keydown', onDown)
       removeEventListener('keyup', onUp)
       try { src.stop() } catch {}
-      resolve({ counts, maxCombo, cleared, quit, offsets })
+      resolve({ counts, maxCombo, cleared, quit, offsets, holds: { ok: holdsOk, ng: holdsNg + notes.filter((n) => n.hold === 'dead').length } })
     }
     const press = (lane: number) => {
       held[lane] = true
@@ -123,6 +126,7 @@ export function play(opts: {
       best.hit = true
       best.judged = j
       record(j, performance.now(), ms, lane, best.t)
+      if (best.len) { best.hold = 'active'; activeHolds[lane] = best }
     }
     const onDown = (e: KeyboardEvent) => {
       if (e.code === 'Escape') return finish(true)
@@ -147,8 +151,14 @@ export function play(opts: {
       const t = songTime()
       while (next < notes.length && (notes[next]!.hit || t - notes[next]!.t > MISS_MS / 1000)) {
         const n = notes[next]!
-        if (!n.hit) { n.hit = true; n.judged = 'miss'; record('miss', performance.now(), null, n.lane, n.t) }
+        if (!n.hit) { n.hit = true; n.judged = 'miss'; if (n.len) n.hold = 'dead'; record('miss', performance.now(), null, n.lane, n.t) }
         next++
+      }
+      for (let l = 0; l < 4; l++) {
+        const h = activeHolds[l]
+        if (!h) continue
+        if (t >= h.t + h.len!) { h.hold = 'ok'; activeHolds[l] = null; holdsOk++; health = Math.min(1, health + 0.015); holdMark.push({ lane: l, ok: true, at: performance.now() }); burst(l, '#ffd23d', 10) }
+        else if (!held[l] && t < h.t + h.len! - 0.08) { h.hold = 'ng'; activeHolds[l] = null; holdsNg++; if (combo >= FEVER_AT) milestone = { text: 'FEVER LOST', at: performance.now() }; combo = 0; health -= 0.05; holdMark.push({ lane: l, ok: false, at: performance.now() }) }
       }
       draw(t)
       if (t > buffer.duration + 0.5) {
@@ -251,13 +261,42 @@ export function play(opts: {
         arrow(g, x0 + l * laneW + laneW / 2, receptorY, s, l, held[l] ? 'rgba(255,255,255,0.95)' : `rgba(255,255,255,${0.35 + pulse * 0.3})`, null, true)
       }
 
-      for (let i = next; i < notes.length; i++) {
+      const drawBody = (n: Live, fromY: number, toY: number, alive: boolean) => {
+        const cx = x0 + n.lane * laneW + laneW / 2, bw = laneW * 0.42
+        const [c] = QUANT_COLOR[n.q ?? 4]!
+        const grad = g.createLinearGradient(0, fromY, 0, toY)
+        grad.addColorStop(0, alive ? '#ffd23d' : 'rgba(120,120,140,0.5)')
+        grad.addColorStop(1, alive ? c : 'rgba(80,80,100,0.3)')
+        g.fillStyle = grad
+        g.globalAlpha = alive ? 0.85 : 0.5
+        g.beginPath()
+        g.roundRect(cx - bw / 2, Math.min(fromY, toY), bw, Math.abs(toY - fromY), bw / 2)
+        g.fill()
+        g.globalAlpha = 1
+      }
+      for (let l = 0; l < 4; l++) {
+        const h = activeHolds[l]
+        if (h) drawBody(h, receptorY, receptorY + (h.t + h.len! - t) * pxPerSec, true)
+      }
+      for (let i = Math.max(0, next - 40); i < notes.length; i++) {
         const n = notes[i]!
         const y = receptorY + (n.t - t) * pxPerSec
         if (y > H + 60) break
+        if (n.len && !n.hit) drawBody(n, y, y + n.len * pxPerSec, true)
+        if (n.len && n.hold === 'dead') { const endY = y + n.len * pxPerSec; if (endY > receptorY - 40) drawBody(n, Math.max(y, receptorY - 40), endY, false) }
         if (n.hit) continue
         const [c, light] = QUANT_COLOR[n.q ?? 4]!
         arrow(g, x0 + n.lane * laneW + laneW / 2, y, laneW * 0.36 * (1 + pulse * 0.08), n.lane, c, light, false)
+      }
+      for (let i = holdMark.length - 1; i >= 0; i--) {
+        const m = holdMark[i]!, k = (now - m.at) / 600
+        if (k >= 1) { holdMark.splice(i, 1); continue }
+        g.globalAlpha = 1 - k
+        g.textAlign = 'center'
+        g.font = '800 16px "Space Grotesk", system-ui'
+        g.fillStyle = m.ok ? '#ffd23d' : '#ff4f6d'
+        g.fillText(m.ok ? 'OK' : 'NG', x0 + m.lane * laneW + laneW / 2, receptorY + 58 + k * 10)
+        g.globalAlpha = 1
       }
 
       g.globalCompositeOperation = 'lighter'
