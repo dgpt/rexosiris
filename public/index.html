@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>what is real. — a rhythm game</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#0c0818; --panel:#171127; --line:#2b2142; --fg:#f1ecff; --mut:#9a8fb8; --pink:#ff4fd8; --cyan:#4fd1ff; --lime:#7dff6a; --amber:#ffb84f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, sans-serif; }
+  #app { min-height:100%; }
+  h1 { font-size:28px; margin:0; letter-spacing:-0.5px; } .dot { color:var(--pink); }
+  h2 { font-size:15px; text-transform:uppercase; letter-spacing:1px; color:var(--mut); margin:24px 0 8px; }
+  button { font:inherit; color:var(--bg); background:var(--lime); border:0; border-radius:8px; padding:9px 16px; cursor:pointer; font-weight:600; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+  input { font:inherit; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px 12px; width:100%; margin-top:4px; }
+  .card { max-width:460px; margin:10vh auto; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:28px; }
+  .auth label { display:block; margin:14px 0; color:var(--mut); }
+  .lede { color:var(--mut); } .error { color:#ff6b6b; min-height:1.4em; margin:0; }
+  .row { display:flex; gap:10px; margin-top:16px; }
+  .top { display:flex; justify-content:space-between; align-items:center; padding:18px 28px; border-bottom:1px solid var(--line); flex-wrap:wrap; gap:12px; }
+  .top nav { display:flex; gap:12px; align-items:center; color:var(--mut); }
+  .speed { display:flex; align-items:center; gap:6px; } .speed input { width:90px; margin:0; }
+  .select { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(300px,1fr); gap:28px; padding:0 28px 40px; }
+  @media (max-width:800px) { .select { grid-template-columns:1fr; } }
+  .songs ul { list-style:none; padding:0; margin:0; display:grid; gap:6px; }
+  .song { width:100%; display:grid; grid-template-columns:1fr auto auto; gap:12px; text-align:left; background:var(--panel); color:var(--fg); border:1px solid var(--line); font-weight:500; }
+  .song.on { border-color:var(--pink); box-shadow:0 0 0 1px var(--pink) inset; }
+  .song .m { color:var(--mut); font-size:13px; } .song .g { color:var(--lime); font-size:13px; min-width:70px; text-align:right; }
+  .detail { position:sticky; top:16px; align-self:start; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; margin-top:24px; }
+  .detail h2 { color:var(--fg); text-transform:none; letter-spacing:0; font-size:22px; margin:0; }
+  .meta,.keys,.muted { color:var(--mut); }
+  .diffs { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:16px 0; }
+  .diffs button { background:var(--bg); color:var(--fg); border:1px solid var(--line); text-transform:capitalize; display:flex; flex-direction:column; }
+  .diffs button.on { border-color:var(--cyan); color:var(--cyan); } .diffs small { color:var(--mut); font-weight:400; }
+  .play { width:100%; padding:14px; font-size:18px; background:var(--pink); }
+  .board { padding:0; list-style:none; margin:0; } .board li { display:grid; grid-template-columns:1fr 40px 90px; padding:6px 0; border-bottom:1px solid var(--line); counter-increment:r; }
+  .board li::before { content:counter(r) "."; position:absolute; margin-left:-22px; color:var(--mut); } .board { counter-reset:r; padding-left:22px; } .board li.me { color:var(--lime); }
+  .board li span:last-child { text-align:right; }
+  .stage { display:block; width:100vw; height:100vh; }
+  .loading { display:grid; place-items:center; height:100vh; color:var(--mut); }
+  .results { text-align:center; } .grade { font-size:96px; font-weight:900; line-height:1; margin:10px 0; }
+  .g-SS,.g-S { color:var(--amber); } .g-A { color:var(--lime); } .g-B { color:var(--cyan); } .g-C,.g-D { color:var(--mut); }
+  .failed { color:#ff6b6b; } .counts { list-style:none; padding:0; display:grid; gap:4px; text-align:left; }
+  .counts li { display:flex; justify-content:space-between; border-bottom:1px solid var(--line); padding:4px 0; text-transform:capitalize; }
+  .counts .perfect b { color:var(--lime); } .counts .great b { color:var(--cyan); } .counts .good b { color:var(--amber); } .counts .miss b { color:#ff6b6b; }
+  .results .row { justify-content:center; }
+  .beatdot { width:60px; height:60px; border-radius:50%; background:var(--pink); margin:30px auto; }
+  kbd { background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:1px 6px; }
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "what-is-real",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/client/main.ts --outfile public/app.js --minify --target browser",
+    "dev": "bun run build && bun src/server/dev.ts",
+    "charts": "bun scripts/build-charts.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "@netlify/blobs": "^8.1.0" },
+  "devDependencies": { "bun-types": "^1.3.0", "typescript": "^5.6.0" }
+}
