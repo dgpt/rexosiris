@@ -369,10 +369,15 @@ export function play(opts: {
         g.fillText(milestone.text, W / 2, receptorY + 90)
         g.globalAlpha = 1
       }
+      const judged = counts.perfect + counts.great + counts.good + counts.miss
+      const acc = judged ? (counts.perfect + counts.great * 0.7 + counts.good * 0.4) / judged : 1
       g.textAlign = 'right'
+      g.font = '700 26px "Space Grotesk", system-ui'
+      g.fillStyle = 'rgba(255,255,255,0.92)'
+      g.fillText(`${(acc * 100).toFixed(2)}%`, W - 20, 40)
       g.font = '600 12px "Space Grotesk", system-ui'
-      g.fillStyle = 'rgba(255,255,255,0.4)'
-      g.fillText('ESC to quit', W - 20, 34)
+      g.fillStyle = counts.miss === 0 && judged > 0 ? '#ffd23d' : 'rgba(255,255,255,0.4)'
+      g.fillText(counts.miss === 0 && judged > 0 ? (counts.great + counts.good === 0 ? 'ALL PERFECT SO FAR' : 'FULL COMBO SO FAR') : 'ESC to quit', W - 20, 60)
     }
     requestAnimationFrame(frame)
   })

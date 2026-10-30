@@ -127,7 +127,7 @@ async function detail() {
     </div>
     <p class="best">${best ? `Your best <b class="g-${best.grade}">${best.grade}</b> ${best.score.toLocaleString()} · combo ${best.maxCombo}` : 'Not played on this difficulty yet.'}</p>
     <button id="go" class="play">Play</button>
-    <p class="keys"><kbd>←</kbd><kbd>↓</kbd><kbd>↑</kbd><kbd>→</kbd> or <kbd>D</kbd><kbd>F</kbd><kbd>J</kbd><kbd>K</kbd> · tap lanes on a phone · <kbd>Esc</kbd> quits</p>
+    <p class="keys">Song select: <kbd>↑</kbd><kbd>↓</kbd> songs · <kbd>←</kbd><kbd>→</kbd> difficulty · <kbd>Enter</kbd> play<br>In game: <kbd>←</kbd><kbd>↓</kbd><kbd>↑</kbd><kbd>→</kbd> or <kbd>D</kbd><kbd>F</kbd><kbd>J</kbd><kbd>K</kbd> · tap lanes on a phone · <kbd>Esc</kbd> quits</p>
     <h3>Leaderboard</h3><ol class="board" id="board"><li class="muted">Loading…</li></ol>`
   el.querySelectorAll<HTMLButtonElement>('[data-d]').forEach((b) => (b.onclick = () => { chosen.difficulty = b.dataset.d as Difficulty; select() }))
   document.getElementById('go')!.onclick = () => start()
@@ -198,6 +198,7 @@ async function results(chartData: SongChart, buffer: AudioBuffer, ranked: boolea
   app.innerHTML = `<section class="results glass">
     <p class="kicker">${esc(chartData.title)} · ${chosen.difficulty}</p>
     <div class="grade g-${local.grade}" id="grade">${local.grade}</div>
+    ${result.counts.miss === 0 ? `<p class="fc">${result.counts.great + result.counts.good === 0 ? 'ALL PERFECT' : 'FULL COMBO'}</p>` : ''}
     <p class="score"><span id="score">0</span><small>${(local.accuracy * 100).toFixed(2)}%${result.cleared ? '' : ' · <span class="failed">health ran out</span>'}</small></p>
     <ul class="counts">${JUDGMENTS.map((j) => `<li class="${j}"><span>${j}</span><b>${result.counts[j]}</b></li>`).join('')}<li class="combo"><span>max combo</span><b>${result.maxCombo}</b></li></ul>
     <figure class="timing"><canvas id="timing" width="560" height="140" aria-label="Timing of every hit"></canvas>
@@ -262,5 +263,26 @@ async function runCalibration() {
   me!.settings = await api.settings({ offsetMs: offset })
   document.getElementById('calmsg')!.textContent = `Saved: ${offset} ms. Your charts now line up with what you hear.`
 }
+
+addEventListener('keydown', (e: KeyboardEvent) => {
+  if (document.body.dataset.screen !== 'select' || !me || !document.getElementById('detail')) return
+  if ((e.target as HTMLElement)?.tagName === 'INPUT') return
+  const order = ['what is real', 'e'].flatMap((al) => songs.filter((s) => s.album === al))
+  const i = order.findIndex((s) => s.slug === chosen.slug)
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    chosen.slug = order[(i + (e.key === 'ArrowDown' ? 1 : -1) + order.length) % order.length]!.slug
+    select(true)
+    document.querySelector('.song.on')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault()
+    const d = DIFFICULTIES.indexOf(chosen.difficulty) + (e.key === 'ArrowRight' ? 1 : -1)
+    chosen.difficulty = DIFFICULTIES[Math.max(0, Math.min(DIFFICULTIES.length - 1, d))]!
+    select()
+  } else if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName !== 'BUTTON') {
+    e.preventDefault()
+    start()
+  }
+})
 
 boot()

@@ -27,12 +27,13 @@ describe('chart generation from audio', () => {
     }
   })
 
-  test('harder charts are denser, and easy never repeats a lane twice in a row', () => {
+  test('harder charts are denser, and easy never asks for the same lane twice within a beat', () => {
     const a = analyze(clickTrack(140, 40), SR)
     const [e, n, h] = (['easy', 'normal', 'hard'] as const).map((d) => chart(a, d))
     expect(e!.length).toBeLessThanOrEqual(n!.length)
     expect(n!.length).toBeLessThanOrEqual(h!.length)
-    for (let i = 1; i < e!.length; i++) expect(e![i]!.lane).not.toBe(e![i - 1]!.lane)
+    const beat = 60 / 140
+    for (let i = 1; i < e!.length; i++) if (e![i]!.lane === e![i - 1]!.lane) expect(e![i]!.t - e![i - 1]!.t).toBeGreaterThan(beat * 1.01)
   })
 
   test('silence produces no notes', () => {

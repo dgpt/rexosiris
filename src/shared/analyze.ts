@@ -284,6 +284,19 @@ export function chartWithSections(a: Analysis, difficulty: Difficulty): { notes:
     }
     const budget = Math.round(perBeat * BEATS_PER_PHRASE * (0.45 + 0.75 * sec.energy))
     const kept = [...pool].sort((x, y) => y.strength - x.strength).slice(0, budget).sort((x, y) => x.t - y.t)
+    const maxGap = beat * (difficulty === 'easy' ? 4 : 2)
+    const filler = hits.flatMap((hs) => hs.filter((h) => h.t >= t0 && h.t < t1 && allowed(h))).sort((x, y) => y.strength - x.strength)
+    for (let pass = 0; pass < 8; pass++) {
+      const edges = [t0 - beat, ...kept.map((h) => h.t), t1]
+      let added = false
+      for (let i = 0; i < edges.length - 1; i++) {
+        if (edges[i + 1]! - edges[i]! <= maxGap || sec.energy < 0.18) continue
+        const fill = filler.find((h) => h.t > edges[i]! + beat * 0.49 && h.t < edges[i + 1]! - beat * 0.49 && !kept.includes(h))
+        if (fill) { kept.push(fill); added = true }
+      }
+      if (!added) break
+      kept.sort((x, y) => x.t - y.t)
+    }
     const bins = new Map<number, (v: number) => Lane>()
     for (const h of kept) {
       if (!bins.has(h.voice)) bins.set(h.voice, laneBins(kept.filter((k) => k.voice === h.voice).map((k) => k.timbre)))
