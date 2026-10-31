@@ -22,7 +22,7 @@ function timingCaption(mean: number) {
 function resultsMarkup(song: SongChart, result: GameResult, ranked: boolean) {
   const local = scoreOf(result.counts, song.charts[state.picked.difficulty].length)
   const holds = result.holds.ok + result.holds.ng > 0 ? `<p class="muted">Holds ${result.holds.ok} OK · ${result.holds.ng} NG</p>` : ''
-  return `<section class="results glass">
+  return `<section class="results">
     <p class="kicker">${esc(song.title)} · ${state.picked.difficulty}</p>
     <div class="grade g-${local.grade}">${local.grade}</div>
     ${flawlessBanner(result)}

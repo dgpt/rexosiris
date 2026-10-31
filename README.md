@@ -2,7 +2,7 @@
 
 This is the home page for my music, REXOSIRIS, and it's also a rhythm game you play on it. The game plays my two albums, *what comes next?* and *e*, plus two DEDZII remixes: twenty-two songs, titled, ordered and credited from the files' own tags (`scripts/read-tags.ts`).
 
-**Play it:** https://what-is-real-rhythm.netlify.app (no account needed: pick a song, then left / up / right on the arrow keys, A W D or J I L, or taps on a phone)
+**Play it:** https://rexosiris.com (no account needed: pick a song, then left / up / right on the arrow keys, A W D or J I L, or taps on a phone)
 
 ## Who it's for
 
@@ -11,7 +11,7 @@ People who'd rather play an album than just listen to it, and people who've hear
 ## What you can do
 
 - **Listen.** The home page is the albums. Every song plays from a player bar, no sign-in.
-- **Play, with or without an account.** Pick a song at Easy, Normal or Hard. Three lanes, left / up / right, like Rift of the NecroDancer, with scrolling arrows and hold notes, judged Perfect / Great / Good / Miss (±45 / 90 / 135 ms) with early/late markers. You get a combo, a health bar, and FEVER at 30 combo. The stage pulses on the beat, with a live spectrum and hit bursts.
+- **Play, with or without an account.** Pick a song at Easy, Normal or Hard. Three lanes, left / up / right, like Rift of the NecroDancer, with scrolling arrows and hold notes, judged Perfect / Great / Good / Miss (±45 / 90 / 135 ms) with early/late markers. You get a combo, a health bar, and FEVER at 30 combo. The song starts the moment you press Play, under a 3-2-1 countdown, and behind the lanes a visualizer draws a different geometric figure for every song, moving with the music.
 - **Results.** You get a grade (SS–D), FULL COMBO and ALL PERFECT banners, hold OK/NG, and a timing graph of every hit. Playing as a guest, the score waits for you: sign in from the results screen and it's saved.
 - **An account, if you want one.** Scores, settings and history are yours, with leaderboards per song and difficulty, your personal best on every song row, and recent plays. Making an account starts with a short calibration.
 - **Calibrate.** Tap along to a click and your median offset is saved, so the charts line up with *your* speakers and keyboard. Taps are timed against when you actually hear the click, and the help text only shows up if your taps are all over the place.
@@ -70,7 +70,7 @@ bun run check      # all three
 
 ## How it was built, and what I'd do next
 
-The first version was built inside the 2-hour box (started 12:52 MDT, see `.timebox`; the `master` branch is that version). After that I kept going for an evening, because it became the home page I'd been needing: no sign-in to play, the Listen player, three lanes, calibration on sign-up, and the trained charter. I chose the product and the music, played it, and called what was wrong. The code was written by an AI coding agent (Claude) working under my direction, which is how I build day to day.
+It started inside the 2-hour box (12:52 MDT, see `.timebox`; the tag `two-hour-box` is that version) and kept going, stop-and-go, into the night: about four hours of work in all, about two of them my own time. It kept going because it became the home page I'd been needing: no sign-in to play, the Listen player, three lanes, calibration on sign-up, and the trained charter. I chose the product and the music, played it, and called what was wrong. The code was written by crane, one of the agents in Loom, the platform I'm building for AI agents that keep a long-term memory and work as a team. crane runs on Claude and worked under my direction, which is how I build day to day; it's why the commits are authored `crane`. It also remembered across the night: a lesson from my review of the server code at 9 pm is why the game screen was rebuilt as one system at midnight instead of patched piece by piece.
 
 How it was checked:
 - Tests cover the analyzer, against synthetic click tracks, a kick/noise/kick song that must change voices, and two alternating pitches that must stay in two lanes. They also cover the API.

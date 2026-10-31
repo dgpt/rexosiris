@@ -3,41 +3,14 @@ import { FLASH_MS, type LaneFlash } from './flashes'
 import type { Scorecard } from './judge'
 import { type Frame, HOLD_GOLD, JUDGE_COLOR, laneCenter, LANES, receptor } from './render'
 
-type Star = { x: number; y: number; readonly z: number }
-
 export type LaneView = { readonly held: boolean; readonly holding: boolean; readonly flash: LaneFlash | null }
 
-const SPECTRUM_BARS = 48
-const STAR_COUNT = 90
 const BEAM_REACH = 0.55
 const HEALTH_GAP = 10
 const HEALTH_W = 6
 const WHITE = '#ffffff'
 
-export const makeStars = (): Star[] => Array.from({ length: STAR_COUNT }, () => ({ x: Math.random(), y: Math.random(), z: 0.2 + Math.random() * 0.8 }))
-
 export const withAlpha = (hex: string, alpha: number) => `${hex}${Math.round(Math.min(1, Math.max(0, alpha)) * 255).toString(16).padStart(2, '0')}`
-
-export function drawBackground(f: Frame, stars: Star[], spectrum: Uint8Array) {
-  const { g, layout } = f
-  const glow = 10 + f.bass * 14 + f.pulse * (f.downbeat ? 8 : 4)
-  const bg = g.createRadialGradient(layout.w / 2, layout.h * 0.55, 10, layout.w / 2, layout.h * 0.55, Math.max(layout.w, layout.h) * 0.8)
-  bg.addColorStop(0, `hsl(${f.hue}, 70%, ${glow}%)`)
-  bg.addColorStop(1, `hsl(${(f.hue + 40) % 360}, 60%, 3%)`)
-  g.fillStyle = bg
-  g.fillRect(0, 0, layout.w, layout.h)
-  for (const s of stars) {
-    s.y = (s.y + 0.0008 * s.z * (1 + f.bass * 6)) % 1
-    g.fillStyle = `rgba(255,255,255,${0.15 + s.z * 0.5})`
-    g.fillRect(s.x * layout.w, s.y * layout.h, s.z * 2, s.z * 2 * (1 + f.bass * 4))
-  }
-  const barW = layout.w / SPECTRUM_BARS
-  for (let i = 0; i < SPECTRUM_BARS; i++) {
-    const v = (spectrum[Math.floor((i / SPECTRUM_BARS) * spectrum.length * 0.8)] ?? 0) / 255
-    g.fillStyle = `hsla(${(f.hue + i * 4) % 360}, 90%, 60%, ${0.12 + v * 0.35})`
-    g.fillRect(i * barW + 1, layout.h - v * layout.h * 0.28, barW - 2, v * layout.h * 0.28)
-  }
-}
 
 const fading = (flash: LaneFlash) => 1 - flash.age / FLASH_MS[flash.kind]
 

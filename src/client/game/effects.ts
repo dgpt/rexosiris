@@ -1,3 +1,5 @@
+import { LaneFlashes } from './flashes'
+
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; readonly color: string; readonly size: number }
 type Ring = { readonly x: number; readonly y: number; readonly born: number; readonly color: string }
 
@@ -9,6 +11,7 @@ const DECAY = 0.025
 export class Effects {
   private readonly particles: Particle[] = []
   private readonly rings: Ring[] = []
+  readonly lanes = new LaneFlashes()
 
   burst(x: number, y: number, color: string, count: number) {
     this.rings.push({ x, y, born: performance.now(), color })

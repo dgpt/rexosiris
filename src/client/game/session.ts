@@ -1,13 +1,13 @@
 import type { Lane, Note, Section } from '../../shared/analyze'
 import type { Counts, Judgment } from '../../shared/types'
 import { heardTime } from '../audio'
+import { Backdrop } from './backdrop'
 import { Effects } from './effects'
-import { LaneFlashes } from './flashes'
 import { drawCombo, drawHud } from './hud'
 import { FEVER_COMBO, judge, KEY_LANES, MISS_AFTER_SECONDS, type Offset, Scorecard } from './judge'
 import { drawNotes, isHold, type LiveNote } from './notes'
 import { type Frame, HOLD_GOLD, JUDGE_COLOR, laneCenter, LANES, layoutFor } from './render'
-import { drawBackground, drawField, drawHealth, makeStars } from './stage'
+import { drawField, drawHealth } from './stage'
 
 export type GameResult = {
   readonly counts: Counts
@@ -34,8 +34,7 @@ const HOLD_RELEASE_GRACE = 0.08
 export class Session {
   private readonly card = new Scorecard()
   private readonly effects = new Effects()
-  private readonly flashes = new LaneFlashes()
-  private readonly stars = makeStars()
+  private readonly backdrop: Backdrop
   private readonly notes: LiveNote[]
   private readonly held = [false, false, false]
   private readonly active: (LiveNote | null)[] = [null, null, null]
@@ -57,6 +56,7 @@ export class Session {
     private readonly song: Song,
     private readonly options: Options,
   ) {
+    this.backdrop = new Backdrop(song.title)
     this.notes = song.notes.map((n) => ({ ...n, state: 'waiting', droppedAt: null }))
     this.source = audio.ctx.createBufferSource()
     this.source.buffer = audio.buffer
@@ -172,7 +172,7 @@ export class Session {
     this.card.record(judgment, note.t, ms)
     this.flash = { judgment, at: performance.now(), ms }
     const layout = layoutFor(this.canvas.clientWidth, this.canvas.clientHeight)
-    this.flashes.strike(note.lane, judgment === 'miss' ? 'miss' : 'hit', JUDGE_COLOR[judgment])
+    this.effects.lanes.strike(note.lane, judgment === 'miss' ? 'miss' : 'hit', JUDGE_COLOR[judgment])
     if (judgment !== 'miss') this.effects.burst(laneCenter(layout, note.lane), layout.receptorY, JUDGE_COLOR[judgment], judgment === 'perfect' ? 14 : 8)
     if (wasFever && !this.card.fever) this.milestone = { text: 'FEVER LOST', at: performance.now() }
     if (this.card.combo === FEVER_COMBO) this.milestone = { text: 'FEVER!', at: performance.now() }
@@ -205,7 +205,7 @@ export class Session {
     hold.droppedAt = droppedAt
     this.active[lane] = null
     this.card.hold(ok)
-    this.flashes.strike(lane, ok ? 'released' : 'miss', ok ? HOLD_GOLD : JUDGE_COLOR.miss)
+    this.effects.lanes.strike(lane, ok ? 'released' : 'miss', ok ? HOLD_GOLD : JUDGE_COLOR.miss)
     const layout = layoutFor(this.canvas.clientWidth, this.canvas.clientHeight)
     if (ok) this.effects.burst(laneCenter(layout, lane), layout.receptorY, HOLD_GOLD, 12)
   }
@@ -245,8 +245,8 @@ export class Session {
     const now = performance.now()
     const section = this.song.sections.findLast((s) => s.t <= t)
     if (section !== undefined && section.voice !== this.voice.name) this.voice = { name: section.voice, since: now }
-    drawBackground(f, this.stars, this.spectrum)
-    drawField(f, LANES.map((lane) => ({ held: this.held[lane] ?? false, holding: this.active[lane] !== null, flash: this.flashes.of(lane) })), this.card.fever)
+    this.backdrop.draw(f, this.spectrum)
+    drawField(f, LANES.map((lane) => ({ held: this.held[lane] ?? false, holding: this.active[lane] !== null, flash: this.effects.lanes.of(lane) })), this.card.fever)
     drawCombo(f, this.card)
     drawNotes(f, this.notes)
     this.effects.draw(f.g, f.layout.r)
