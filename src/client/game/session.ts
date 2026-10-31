@@ -2,9 +2,12 @@ import type { Lane, Note, Section } from '../../shared/analyze'
 import type { Counts, Judgment } from '../../shared/types'
 import { heardTime } from '../audio'
 import { Effects } from './effects'
+import { LaneFlashes } from './flashes'
+import { drawCombo, drawHud } from './hud'
 import { FEVER_COMBO, judge, KEY_LANES, MISS_AFTER_SECONDS, type Offset, Scorecard } from './judge'
-import { drawHealth, drawNotes, type Frame, JUDGE_COLOR, laneCenter, LANES, layoutFor, type LiveNote } from './render'
-import { drawBackground, drawField, drawHud, makeStars } from './stage'
+import { drawNotes, isHold, type LiveNote } from './notes'
+import { type Frame, HOLD_GOLD, JUDGE_COLOR, laneCenter, LANES, layoutFor } from './render'
+import { drawBackground, drawField, drawHealth, makeStars } from './stage'
 
 export type GameResult = {
   readonly counts: Counts
@@ -25,12 +28,13 @@ export type Song = {
 
 export type Options = { readonly offsetMs: number; readonly speed: number; readonly hue: number }
 
-const LEAD_IN_SECONDS = 2.2
+const START_MARGIN_SECONDS = 0.05
 const HOLD_RELEASE_GRACE = 0.08
 
 export class Session {
   private readonly card = new Scorecard()
   private readonly effects = new Effects()
+  private readonly flashes = new LaneFlashes()
   private readonly stars = makeStars()
   private readonly notes: LiveNote[]
   private readonly held = [false, false, false]
@@ -53,14 +57,14 @@ export class Session {
     private readonly song: Song,
     private readonly options: Options,
   ) {
-    this.notes = song.notes.map((n) => ({ ...n, hit: false, hold: 'pending' }))
+    this.notes = song.notes.map((n) => ({ ...n, state: 'waiting', droppedAt: null }))
     this.source = audio.ctx.createBufferSource()
     this.source.buffer = audio.buffer
     this.analyser = audio.ctx.createAnalyser()
     this.analyser.fftSize = 256
     this.spectrum = new Uint8Array(this.analyser.frequencyBinCount)
     this.source.connect(this.analyser).connect(audio.ctx.destination)
-    this.startAt = audio.ctx.currentTime + LEAD_IN_SECONDS
+    this.startAt = audio.ctx.currentTime + START_MARGIN_SECONDS
   }
 
   run(): Promise<GameResult> {
@@ -152,17 +156,14 @@ export class Session {
 
   private press(lane: Lane, t: number) {
     this.held[lane] = true
-    const candidates = this.notes.slice(this.next).filter((n) => !n.hit && n.lane === lane && n.t - t <= MISS_AFTER_SECONDS)
+    const candidates = this.notes.slice(this.next).filter((n) => n.state === 'waiting' && n.lane === lane && n.t - t <= MISS_AFTER_SECONDS)
     const target = candidates.toSorted((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0]
     if (target === undefined) return
     const ms = (t - target.t) * 1000
     const judgment = judge(ms)
     if (judgment === null) return
-    target.hit = true
-    if ((target.len ?? 0) > 0) {
-      target.hold = 'active'
-      this.active[lane] = target
-    }
+    target.state = isHold(target) ? 'holding' : 'hit'
+    if (isHold(target)) this.active[lane] = target
     this.score(judgment, target, ms)
   }
 
@@ -171,6 +172,7 @@ export class Session {
     this.card.record(judgment, note.t, ms)
     this.flash = { judgment, at: performance.now(), ms }
     const layout = layoutFor(this.canvas.clientWidth, this.canvas.clientHeight)
+    this.flashes.strike(note.lane, judgment === 'miss' ? 'miss' : 'hit', JUDGE_COLOR[judgment])
     if (judgment !== 'miss') this.effects.burst(laneCenter(layout, note.lane), layout.receptorY, JUDGE_COLOR[judgment], judgment === 'perfect' ? 14 : 8)
     if (wasFever && !this.card.fever) this.milestone = { text: 'FEVER LOST', at: performance.now() }
     if (this.card.combo === FEVER_COMBO) this.milestone = { text: 'FEVER!', at: performance.now() }
@@ -180,10 +182,9 @@ export class Session {
   private sweep(t: number) {
     for (; this.next < this.notes.length; this.next++) {
       const note = this.notes[this.next]
-      if (note === undefined || (!note.hit && t - note.t <= MISS_AFTER_SECONDS)) break
-      if (!note.hit) {
-        note.hit = true
-        if ((note.len ?? 0) > 0) note.hold = 'dead'
+      if (note === undefined || (note.state === 'waiting' && t - note.t <= MISS_AFTER_SECONDS)) break
+      if (note.state === 'waiting') {
+        note.state = 'missed'
         this.score('miss', note, null)
       }
     }
@@ -194,14 +195,19 @@ export class Session {
     const hold = this.active[lane]
     if (hold === null || hold === undefined) return
     const end = hold.t + (hold.len ?? 0)
-    const ok = t >= end
-    if (!ok && (this.held[lane] ?? false)) return
-    if (!ok && t >= end - HOLD_RELEASE_GRACE) return
-    hold.hold = ok ? 'ok' : 'ng'
+    if (t >= end) this.finishHold(lane, hold, null)
+    else if (!(this.held[lane] ?? false) && t < end - HOLD_RELEASE_GRACE) this.finishHold(lane, hold, t)
+  }
+
+  private finishHold(lane: Lane, hold: LiveNote, droppedAt: number | null) {
+    const ok = droppedAt === null
+    hold.state = ok ? 'held' : 'dropped'
+    hold.droppedAt = droppedAt
     this.active[lane] = null
     this.card.hold(ok)
+    this.flashes.strike(lane, ok ? 'released' : 'miss', ok ? HOLD_GOLD : JUDGE_COLOR.miss)
     const layout = layoutFor(this.canvas.clientWidth, this.canvas.clientHeight)
-    this.effects.banner(ok ? 'OK' : 'NG', ok ? '#ffd23d' : '#ff4f6d', { x: laneCenter(layout, lane), y: layout.receptorY + 58 })
+    if (ok) this.effects.burst(laneCenter(layout, lane), layout.receptorY, HOLD_GOLD, 12)
   }
 
   private frame(): boolean {
@@ -209,8 +215,8 @@ export class Session {
     this.sweep(t)
     this.draw(t)
     if (t <= this.audio.buffer.duration + 0.5) return false
-    for (const note of this.notes.slice(this.next).filter((n) => !n.hit)) {
-      note.hit = true
+    for (const note of this.notes.slice(this.next).filter((n) => n.state === 'waiting')) {
+      note.state = 'missed'
       this.score('miss', note, null)
     }
     return true
@@ -240,9 +246,10 @@ export class Session {
     const section = this.song.sections.findLast((s) => s.t <= t)
     if (section !== undefined && section.voice !== this.voice.name) this.voice = { name: section.voice, since: now }
     drawBackground(f, this.stars, this.spectrum)
-    drawField(f, this.held, this.card.fever)
-    drawNotes(f, this.notes, this.next)
-    this.effects.draw(f.g, f.layout.laneW)
+    drawField(f, LANES.map((lane) => ({ held: this.held[lane] ?? false, holding: this.active[lane] !== null, flash: this.flashes.of(lane) })), this.card.fever)
+    drawCombo(f, this.card)
+    drawNotes(f, this.notes)
+    this.effects.draw(f.g, f.layout.r)
     drawHealth(f, this.card)
     drawHud(f, this.card, {
       title: this.song.title,
@@ -256,7 +263,7 @@ export class Session {
   }
 
   private result(quit: boolean): GameResult {
-    const dead = this.notes.filter((n) => n.hold === 'dead').length
+    const dead = this.notes.filter((n) => isHold(n) && n.state === 'missed').length
     return { counts: this.card.counts, maxCombo: this.card.maxCombo, cleared: this.card.cleared, quit, offsets: this.card.offsets, holds: { ok: this.card.holds.ok, ng: this.card.holds.ng + dead } }
   }
 }
