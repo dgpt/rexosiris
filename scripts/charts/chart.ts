@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { analyze, chartWithSections, type Difficulty, type Note } from '../../src/shared/analyze'
+import type { Difficulty } from '../../src/shared/analyze'
+import { afterCountdown } from '../../src/shared/countdown'
 import type { SongChart } from '../../src/shared/types'
 import { anchored, type Grid } from './grid'
 import { displayGrid, notesOf } from './notes'
@@ -46,8 +47,7 @@ export function buildChart(work: string, song: Song): Built {
     bpm: round(60 / display.beat, 2),
     firstBeat: round(display.firstBeat, 3),
     duration: round(curve.duration, 1),
-    charts: perDifficulty((d): Note[] => [...picks[d].placed.notes]),
-    sections: chartWithSections(analyze(pcm, SAMPLE_RATE), 'normal').sections,
+    charts: perDifficulty((d) => afterCountdown(picks[d].placed.notes)),
   }
   return { chart, picks }
 }

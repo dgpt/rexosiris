@@ -1,4 +1,5 @@
 import { analyze, chartWithSections, DIFFICULTIES, type Difficulty, type Note, type Section } from '../../shared/analyze'
+import { afterCountdown } from '../../shared/countdown'
 import type { SongChart } from '../../shared/types'
 import { audioContext, stopPreview } from '../audio'
 import { isDifficulty } from '../decode'
@@ -29,7 +30,7 @@ export async function chartFromFile(file: File, onStage: (stage: string) => void
   const charts: Record<Difficulty, Note[]> = { easy: [], normal: [], hard: [] }
   let sections: Section[] = []
   for (const [d, chart] of built) {
-    charts[d] = chart.notes
+    charts[d] = afterCountdown(chart.notes)
     sections = chart.sections
   }
   const title = file.name.replace(/\.[^.]+$/, '')
