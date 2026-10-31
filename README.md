@@ -1,35 +1,42 @@
 # REXOSIRIS. — a rhythm game
 
-A StepMania / Crypt of the NecroDancer–style rhythm game where every track is mine. I release music as REXOSIRIS, and the game plays two of my albums, *what comes next?* and *e*: twenty songs, titled, ordered and credited from the files' own tags (`scripts/read-tags.ts`).
+This is the home page for my music, REXOSIRIS, and it's also a rhythm game you play on it. The game plays my two albums, *what comes next?* and *e*, plus two DEDZII remixes: twenty-two songs, titled, ordered and credited from the files' own tags (`scripts/read-tags.ts`).
 
-**Play it:** https://what-is-real-rhythm.netlify.app (make an account, pick a song, arrow keys or D F J K, taps on a phone)
+**Play it:** https://what-is-real-rhythm.netlify.app (no account needed: pick a song, then left / up / right on the arrow keys, A W D or J I L, or taps on a phone)
 
 ## Who it's for
 
-People who'd rather play an album than just listen to it, and people who've heard my music and want to *hit* it. The good moment is when a chart lands on a kick you've heard a hundred times, and now you're the one hitting it.
+People who'd rather play an album than just listen to it, and people who've heard my music and want to *hit* it. The good moment is when a chart lands on a part you've heard a hundred times, and now you're the one playing it.
 
 ## What you can do
 
-- **Create an account / sign in.** Scores, settings and history are yours.
-- **Pick a song from either album, at Easy, Normal or Hard.** Selecting a song plays a preview. Arrows and Enter drive the whole menu from the keyboard. Each song shows its BPM, length, note and hold counts, and the path of instruments its chart follows.
-- **Play.** Four lanes, scrolling arrows and hold notes, judged Perfect / Great / Good / Miss (±45 / 90 / 135 ms) with early/late markers. You get a combo, a health bar, and FEVER at 30 combo. The stage pulses on the beat, NecroDancer style, harder on the downbeat, with a live spectrum and hit bursts. A tag shows which instrument the chart is following right now.
-- **Results.** You get a grade (SS–D), FULL COMBO and ALL PERFECT banners, hold OK/NG, and a timing graph of every hit. If you're consistently early or late, it tells you to calibrate. The server saves the run and tells you whether it's a personal best and where it ranks.
-- **Leaderboards per song and difficulty**, plus your personal best on every song row and a recent-plays list.
-- **Calibrate.** Tap along to a click and your median offset is saved to your account, so the charts line up with *your* speakers and keyboard.
-- **Scroll speed**, saved per account.
-- **Chart your own track.** Drop any audio file and the same analyzer that charted my albums runs in your browser and charts it. Those runs aren't ranked.
+- **Listen.** The home page is the albums. Every song plays from a player bar, no sign-in.
+- **Play, with or without an account.** Pick a song at Easy, Normal or Hard. Three lanes, left / up / right, like Rift of the NecroDancer, with scrolling arrows and hold notes, judged Perfect / Great / Good / Miss (±45 / 90 / 135 ms) with early/late markers. You get a combo, a health bar, and FEVER at 30 combo. The stage pulses on the beat, with a live spectrum and hit bursts.
+- **Results.** You get a grade (SS–D), FULL COMBO and ALL PERFECT banners, hold OK/NG, and a timing graph of every hit. Playing as a guest, the score waits for you: sign in from the results screen and it's saved.
+- **An account, if you want one.** Scores, settings and history are yours, with leaderboards per song and difficulty, your personal best on every song row, and recent plays. Making an account starts with a short calibration.
+- **Calibrate.** Tap along to a click and your median offset is saved, so the charts line up with *your* speakers and keyboard. Taps are timed against when you actually hear the click, and the help text only shows up if your taps are all over the place.
+- **Scroll speed**, saved per account (or locally as a guest).
+- **Chart your own track.** Drop any audio file and an analyzer charts it in your browser. Those runs aren't ranked.
 
-## The interesting part: charts that listen
+## How the charts are made
 
-Nobody hand-charted these. `src/shared/analysis/` is plain TypeScript that runs both offline over the albums (`scripts/build-charts.ts`) and in your browser when you upload a track.
+The albums were charted by a model trained on charts people made by hand, then fitted to my own projects.
 
-1. **Six voices.** A Hann-windowed FFT (1024 / hop 256 at 22.05 kHz) is split into instrument bands: kick, bass, snare body, snare crack and lead, hats, and cymbals. For each band it tracks spectral flux (hits), level (sustain) and a flux-weighted centroid (where in the band the hit sits, which stands in for timbre and pitch).
-2. **The beat grid.** Tempo comes from autocorrelating the onset envelope at 1×, 2× and 4× the beat lag (75–185 BPM, with a prior so it doesn't settle on half or double time). Then comes the phase, and a regression through the strongest onset near each beat. On a click track every note lands within one analysis frame (~11 ms).
-3. **Phrases follow the music.** The song is cut into 4-bar phrases. Each phrase follows the voice that is most *unusually* present in it: salience divided by that voice's average across the song, with hysteresis so the lead doesn't flicker. The chart moves between soundscapes the way a person would chart them, kick in the verse, lead in the hook, hats in the break. The game shows what it's following, and song select shows each song's path.
-4. **Same sound, same lane.** Within a phrase, the followed voice's hits are clustered by timbre on the gaps between them. Each cluster gets a fixed lane, ordered low to high. A riff that alternates two notes alternates two lanes, and a melody climbing in pitch walks left to right.
-5. **Density follows energy.** Each phrase's note budget scales with its loudness. Drops get dense and breakdowns breathe. Gaps longer than 2 beats (4 on Easy) are filled from the next-strongest voice, except in quiet breakdowns.
-6. **Holds.** A bass, snare-body or lead hit whose band level stays up for 1+ beats becomes a hold note, in half-beat steps up to 4 beats, trimmed so its lane is free again before the next note.
-7. **Difficulty.** Easy is quarter notes from the followed voice and never asks for the same lane twice within a beat. Normal adds eighths and holds. Hard adds sixteenths, a second voice and jumps on strong downbeats. Notes are colored by subdivision (red quarters, blue eighths, gold sixteenths), the way StepMania players read rhythm at a glance.
+1. **A charter trained on human charts.** [Mapperatorinator](https://github.com/OliBomby/Mapperatorinator) (v32) is a transformer trained on ranked osu! beatmaps, mania included. It listens to the song and writes a chart. It's best at 4-key mania, so it charts in 4K and `scripts/charts/notes.ts` folds that to three lanes: the outer columns go left and right, the inner ones go up, and when the chart steps sideways out of the middle it steps the same way, so the fold doesn't invent repeated same-lane hits the chart didn't have.
+2. **My FL Studio projects give the exact grid.** For twelve songs, `scripts/flp` reads the .flp project directly (FL 25's format, without PyFLP) and finds which project made which song by matching note onsets against the master, since a lot of projects had been renamed. Left alone, the model guesses the tempo first and then charts against its guess, and on some songs the guess started halfway through, leaving the first half empty. `scripts/charts/generate.ts` hands it the project's grid instead, at the tempo octave the model itself hears (*drive* is charted at 190 bpm, the way an osu! mapper would time it).
+3. **One tempo for the songs without a project.** The model's slow, careful timing pass runs once per song, and `scripts/charts/grid.ts` fits one tempo through every long section it found. These are FL productions at a constant tempo, so one grid is closer to the truth than the pass's small wobbles. All three difficulties share it.
+4. **Lined up with the sound, measured.** `fitToOnsets` in `grid.ts` slides each grid against the song's onsets, searching tempo (±0.5%) and phase together, and moves it to where the hits actually land. The onset curve it fits against (`scripts/charts/onsets.ts`) is checked by a test against synthetic clicks with known onsets, and that test fails if its latency is off by 4 ms. On the twelve linked songs it leaves the project tempo exactly as it is and moves the grid 23 to 26 ms later, the error of my matcher. On the others it corrected two fitted tempos (*is it over?* was 0.23% slow) to the same values the titled FL projects hold, and a check that each third of the song still lines up reads within 3 ms everywhere.
+5. **Three seeds per chart, best one kept.** Every difficulty is generated three times. `scripts/charts/pick.ts` drops any version that leaves loud parts of the song empty or holds a note longer than 12 seconds, then keeps the one whose notes sit on the strongest attacks. It chooses between whole charts; it never moves a note.
+6. **Difficulty by density.** Easy, Normal and Hard come from the model's star rating (0.9 / 1.4 / 2.1, in its half-star steps), chosen to match the note counts people were already playing.
+
+The charts are precomputed, in two steps that share one work directory:
+
+```
+MAPPERATORINATOR=/path/to/Mapperatorinator bun run charts:generate .charts   # grids, then 3 seeds x 3 difficulties per song; skips what exists
+bun run charts:assemble .charts                                              # picks a chart per difficulty, writes public/charts/
+```
+
+Uploads still go through the original in-browser analyzer (`src/shared/analysis/`).
 
 ## Not trusting the client
 
@@ -37,9 +44,9 @@ The browser sends judgment counts, not a score. The server checks that the count
 
 ## Stack
 
-- TypeScript end to end, built with Bun. The client is vanilla TS plus Canvas plus Web Audio, with no framework, at about 43 KB minified.
+- TypeScript end to end, built with Bun. The client is vanilla TS plus Canvas plus Web Audio, with no framework, at about 48 KB minified.
 - The API is one handler. It runs locally under `Bun.serve` and in production as a Netlify Function (`netlify/functions/api.mts`), with Netlify Blobs as the store.
-- Audio is my FLAC masters, transcoded to 128k MP3 (`scripts/transcode.sh`).
+- Audio is my FLAC masters, transcoded to 128k MP3 (`bun run audio`).
 
 ```
 bun install
@@ -55,13 +62,15 @@ bun run check      # all three
 - `src/shared/analysis/`: one module per stage of the charter (`fft`, `features`, `grid`, `voices`, `phrases`, `lanes`, `chart`), with `model.ts` holding the shared types and constants. `analyze.ts` re-exports them.
 - `src/shared/guards.ts`: runtime type guards. Nothing read from the network or the store is cast; it is checked.
 - `src/server/`: `handler.ts` is a route table of small typed handlers, `session.ts` holds passwords and signed cookies, and `dev.ts` is the local file store.
-- `src/client/`: `game/` (judging, scorecard, rendering, the play session), `screens/` (one module per screen) and small `api`, `audio`, `state`, `dom` and `decode` modules.
+- `src/client/`: `game/` (judging, scorecard, rendering, the play session), `screens/` (one module per screen) and small `api`, `audio`, `listen`, `settings`, `state`, `dom` and `decode` modules.
+- `scripts/flp/`: the FL Studio project reader and the onset matcher that links a project to its master. The links themselves (local paths) stay out of the repo.
+- `scripts/charts/`: the chart pipeline. `osu.ts` is the only code that reads or writes .osu files (a test holds that), `onsets.ts` the one onset measure, `grid.ts` the one grid, `notes.ts` the fold to three lanes, `pick.ts` the choice between seeds, `model.ts` the only place the model is called.
 
 `.oxlintrc.json` is strict on purpose. It turns the correctness, suspicious, pedantic and perf categories into errors, and the type-aware rules (no `any`, no unsafe casts, no non-null `!`, strict booleans, no floating promises) apply on top. It also caps size: 250 lines a file, 60 a function, complexity 12, nesting depth 3, 4 parameters. A local rule (`lint/no-comments.ts`) bans comments, because a comment that was true gets read as current long after it stops being true. Names, types and tests carry the meaning instead. The whole tree lints at 0 warnings and 0 errors.
 
 ## How it was built, and what I'd do next
 
-I worked inside the 2-hour box (started 12:52 MDT, see `.timebox`). I chose the product and the music and played it. The code was written by an AI coding agent (Claude) working under my direction, which is how I build day to day.
+The first version was built inside the 2-hour box (started 12:52 MDT, see `.timebox`; the `master` branch is that version). After that I kept going for an evening, because it became the home page I'd been needing: no sign-in to play, the Listen player, three lanes, calibration on sign-up, and the trained charter. I chose the product and the music, played it, and called what was wrong. The code was written by an AI coding agent (Claude) working under my direction, which is how I build day to day.
 
 How it was checked:
 - Tests cover the analyzer, against synthetic click tracks, a kick/noise/kick song that must change voices, and two alternating pitches that must stay in two lanes. They also cover the API.
@@ -77,10 +86,17 @@ What the checks caught:
 - A touch the phone cancels (an edge swipe, a notification) never sent touchend, so its lane stayed held and a hold note scored OK with no finger on it. A probe that cancels a touch mid-hold read "1 OK" before the fix and "1 NG" after.
 - On a phone the only way out of a song was Esc. There is now a × outside the lane columns.
 - An earlier revert had quietly dropped the lint script from package.json, so the gate wasn't running at all.
+- Calibration called my latency "perfect" right after measuring -17 ms. It now always states the number, and it saves nothing if the taps are too scattered to trust.
+- The calibration click kept playing after you left the screen.
+- Snapping every note onto the nearest audio onset made the charts worse, not better, because it was graded against the same onset curve it snapped to. It was reverted.
+- Asked for three keys, the trained model still wrote four columns, so it charts in four and the fold does the rest.
+- Filenames with parentheses broke the model's config parser, and most of the first batch of charts failed without anyone noticing. The batch now stops after three failures.
+- Left to time a song itself, the model sometimes started its tempo at 1:38 or 2:09, and those charts had nothing before that. It now gets the tempo handed to it, and a version that leaves loud parts empty is never picked.
+- Three charts the picker had chosen opened with a single hold lasting 46 seconds, or the whole song, written by the model at time zero. The hold also blocked its lane, so the rest of the chart was folded around it. A chart like that is now never picked; the longest hold anywhere else is under 7 seconds.
+- The grid my project matcher found was 23 to 26 ms early on all twelve songs. The model's own timing agreed with it, which looked like confirmation, but it was early in the same way. Only a synthetic click with a known onset separated the measuring tool's error from the song's.
 
 Next:
-- A per-song chart editor for the moments the analyzer gets wrong.
-- Per-song offsets from the masters.
+- Hand fixes for the moments the charter gets wrong. The converter already reads .osu files, so a chart can go through osu!'s own mania editor and come back.
 - Friends and following on the leaderboards.
 - Replays.
 - Chord-aware lanes for the lead.

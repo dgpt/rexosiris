@@ -4,3 +4,4 @@ node_modules
 *.f32
 .shots
 scripts/projects.local.json
+.charts

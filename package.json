@@ -6,7 +6,9 @@
   "scripts": {
     "build": "bun build src/client/main.ts --outfile public/app.js --minify --target browser",
     "dev": "bun run build && bun src/server/dev.ts",
-    "charts": "bun scripts/build-charts.ts",
+    "audio": "bun scripts/transcode.ts",
+    "charts:generate": "bun scripts/charts/generate.ts",
+    "charts:assemble": "bun scripts/charts/assemble.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --type-aware --deny-warnings src scripts lint netlify",
