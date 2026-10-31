@@ -30,7 +30,7 @@ function albumMarkup(album: string) {
 
 const INTRO = `<section class="intro">
   <h1 class="title">${ARTIST}<span class="dot">.</span></h1>
-  <p class="lede">Two albums and two remixes. Listen to any of them, or play them as a rhythm game. The charts were written by a model trained on charts people made by hand, then set on the tempo of each song, taken from its FL Studio project where I have one.</p>
+  <p class="lede">A life in pieces.<br>Origins.<br>September 24, 2182.</p>
 </section>`
 
 function recentMarkup() {

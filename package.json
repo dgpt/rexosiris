@@ -11,7 +11,7 @@
     "charts:assemble": "bun scripts/charts/assemble.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint --type-aware --deny-warnings src scripts lint netlify",
+    "lint": "bun --bun oxlint --type-aware --deny-warnings src scripts lint netlify",
     "check": "bun run typecheck && bun run lint && bun test"
   },
   "dependencies": { "@netlify/blobs": "^8.1.0" },
