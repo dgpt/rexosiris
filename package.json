@@ -1,5 +1,5 @@
 {
-  "name": "what-is-real",
+  "name": "rexosiris",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22.6", "bun": ">=1.3" },
