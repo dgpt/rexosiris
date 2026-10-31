@@ -1,4 +1,4 @@
-import { type Analysis, beatLength, frameCenter, framesPerSecond, type Hit, sample, VOICES } from './model'
+import { type Analysis, beatLength, framesPerSecond, type Hit, onsetLag, sample, VOICES } from './model'
 
 const MIN_FLUX = 0.05
 const LOCAL_WINDOW_SECONDS = 0.5
@@ -50,7 +50,7 @@ export function voiceHits(a: Analysis, voice: number): Hit[] {
     const mean = localMean(flux, i, radius)
     if (sample(flux, i) < mean * 1.5 + 0.04) continue
     last = i
-    const t = i / fps + frameCenter(a.sampleRate)
+    const t = i / fps + onsetLag(a.sampleRate)
     const slot = Math.round((t - a.firstBeat) / step)
     const snapped = a.firstBeat + slot * step
     const inWindow = snapped >= LEAD_IN_SECONDS && snapped <= a.duration - TAIL_SECONDS
