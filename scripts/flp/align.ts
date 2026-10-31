@@ -1,8 +1,8 @@
 import { analyze } from '../../src/shared/analyze'
-import { framesPerSecond, onsetLag } from '../../src/shared/analysis/model'
+import { framesPerSecond } from '../../src/shared/analysis/model'
 import type { ProjectNote } from './timeline'
 
-export type Onsets = { readonly envelope: Float32Array; readonly fps: number; readonly lag: number; readonly strong: number; readonly duration: number; readonly bpm: number }
+export type Onsets = { readonly envelope: Float32Array; readonly fps: number; readonly strong: number; readonly duration: number; readonly bpm: number }
 export type Alignment = { readonly scale: number; readonly offset: number; readonly contrast: number; readonly hitRate: number; readonly drift: number }
 
 const SEARCH_SECONDS = { from: -4, to: 12 }
@@ -13,7 +13,7 @@ const SCALES = [0.5, 1] as const
 export function onsetsOf(pcm: Float32Array, sampleRate: number): Onsets {
   const { envelope, duration, bpm } = analyze(pcm, sampleRate)
   const sorted = Array.from(envelope).toSorted((a, b) => a - b)
-  return { envelope, fps: framesPerSecond(sampleRate), lag: onsetLag(sampleRate), strong: sorted[Math.floor(sorted.length * STRONG_ONSET_QUANTILE)] ?? 0, duration, bpm }
+  return { envelope, fps: framesPerSecond(sampleRate), strong: sorted[Math.floor(sorted.length * STRONG_ONSET_QUANTILE)] ?? 0, duration, bpm }
 }
 
 function framesOf(notes: readonly ProjectNote[], fps: number, scale: number) {
@@ -50,7 +50,7 @@ function alignAt(onsets: Onsets, notes: readonly ProjectNote[], scale: number): 
   const whole = bestLag(onsets, frames)
   const first = bestLag(onsets, frames.filter((f) => f < half))
   const second = bestLag(onsets, frames.filter((f) => f >= half))
-  return { scale, offset: whole.lag / onsets.fps + onsets.lag, contrast: whole.contrast, hitRate: hitRate(onsets, frames, whole.lag), drift: (second.lag - first.lag) / onsets.fps }
+  return { scale, offset: whole.lag / onsets.fps, contrast: whole.contrast, hitRate: hitRate(onsets, frames, whole.lag), drift: (second.lag - first.lag) / onsets.fps }
 }
 
 export function align(onsets: Onsets, notes: readonly ProjectNote[]): Alignment {
