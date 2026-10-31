@@ -44,7 +44,7 @@ function readyMarkup({ song }: CustomTrack) {
     return `<button role="radio" aria-checked="${on}" data-difficulty="${d}" class="${on ? 'on' : ''}">${d}<small>${count(song.charts[d].length, 'note')}</small></button>`
   })
   return `<section class="card glass"><h2>${esc(song.title)}</h2>
-    <p class="meta">${song.bpm.toFixed(1)} bpm · ${fmtTime(song.duration)} · charted in your browser by the same analyzer that charted my albums</p>
+    <p class="meta">${song.bpm.toFixed(1)} bpm · ${fmtTime(song.duration)} · charted in your browser by an analyzer, not the model that charted my albums</p>
     ${voices.length > 0 ? `<p class="meta">It follows: ${voices.map((v) => `<span class="tag">${esc(v)}</span>`).join(' ')}</p>` : ''}
     <div class="diffs" role="radiogroup" aria-label="Difficulty">${radios.join('')}</div>
     <p class="muted">Your own tracks aren't ranked. The leaderboards are for the albums.</p>
