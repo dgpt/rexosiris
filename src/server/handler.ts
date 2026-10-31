@@ -1,170 +1,191 @@
-import index from '../shared/chart-index.json'
-import { isArrayOf, isCounts, isDifficulty, isRecord, isRecordOf, isScoreRow, isString, isWhole, type Settings } from '../shared/guards'
+import index from '../../public/charts/index.json'
+import { DIFFICULTIES, type Difficulty } from '../shared/analyze'
+import { type Guard, isArrayOf, isCounts, isDifficulty, isRecord, isRecordOf, isScoreRow, isString, isWhole, type Settings } from '../shared/guards'
 import { scoreOf, type ScoreRow, type ScoreSubmission } from '../shared/types'
-import { CLEAR_COOKIE, hashPassword, isUser, newUser, sessionCookie, sessionUser, type User } from './session'
+import { CLEAR_COOKIE, isUser, newUser, passwordMatches, sessionCookie, sessionUser, type User } from './session'
 
 export interface Store {
   get(key: string): Promise<unknown>
   set(key: string, value: unknown): Promise<void>
 }
 
-type Context = { readonly req: Request; readonly store: Store; readonly secret: string; readonly secure: boolean }
-type PublicRoute = (ctx: Context, params: readonly string[]) => Response | Promise<Response>
-type PrivateRoute = (ctx: Context, user: User) => Promise<Response>
+type Context = { readonly req: Request; readonly store: Store; readonly secret: string; readonly secure: boolean; readonly params: readonly string[] }
+type Route = { readonly method: 'GET' | 'POST' | 'PUT'; readonly path: RegExp; readonly run: (ctx: Context) => Promise<Response> }
+
+class Refusal extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+  }
+}
+
+const refuse = (status: number, message: string): never => {
+  throw new Refusal(status, message)
+}
 
 const DEFAULT_SETTINGS: Settings = { offsetMs: 0, speed: 0.5 }
+const OFFSET_LIMIT_MS = 300
+const SPEED = { min: 0.25, max: 3, step: 0.05 }
 const BOARD_SIZE = 20
-const HISTORY_SIZE = 50
+const HISTORY_KEPT = 50
 const HISTORY_SHOWN = 15
-const noteCounts = new Map(index.map((c) => [c.slug, c.notes]))
-
 const USERNAME = /^[a-zA-Z0-9_-]{3,20}$/
-const userKey = (name: string) => `user/${name.toLowerCase()}`
-const boardKey = (slug: string, difficulty: string) => `board/${slug}/${difficulty}`
-const bestsKey = (name: string) => `bests/${name.toLowerCase()}`
-const historyKey = (name: string) => `history/${name.toLowerCase()}`
+const MIN_PASSWORD_LENGTH = 8
+
+const chartNotes = new Map(index.map((entry) => [entry.slug, entry.notes]))
+
+const keys = {
+  user: (name: string) => `user/${name.toLowerCase()}`,
+  bests: (name: string) => `bests/${name.toLowerCase()}`,
+  history: (name: string) => `history/${name.toLowerCase()}`,
+  board: (slug: string, difficulty: Difficulty) => `board/${slug}/${difficulty}`,
+}
+const chartOf = (row: ScoreSubmission) => `${row.slug}/${row.difficulty}`
 
 const isRows = isArrayOf(isScoreRow)
 const isBests = isRecordOf(isScoreRow)
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } })
-const fail = (status: number, error: string) => json({ error }, status)
 
 async function bodyOf(req: Request): Promise<Record<string, unknown>> {
   const parsed: unknown = await req.json().catch(() => null)
-  return isRecord(parsed) ? parsed : {}
+  return isRecord(parsed) ? parsed : refuse(400, 'Send a JSON object')
 }
 
-async function read<T>(store: Store, key: string, guard: (v: unknown) => v is T, fallback: T): Promise<T> {
+async function read<T>(store: Store, key: string, guard: Guard<T>, empty: T): Promise<T> {
   const value = await store.get(key)
-  return guard(value) ? value : fallback
+  if (value === null) return empty
+  if (!guard(value)) throw new Error(`stored ${key} is not in the shape this server writes`)
+  return value
 }
 
-export function validateSubmission(body: unknown): ScoreSubmission | string {
-  if (!isRecord(body)) return 'unknown song'
+type Submission = ScoreSubmission & { readonly notes: number }
+
+export function submissionOf(body: Record<string, unknown>): Submission {
   const { slug, difficulty, counts, maxCombo } = body
-  const chartNotes = isString(slug) ? noteCounts.get(slug) : undefined
-  if (chartNotes === undefined || !isString(slug)) return 'unknown song'
-  if (!isDifficulty(difficulty)) return 'unknown difficulty'
-  if (!isCounts(counts)) return 'counts must be whole numbers'
-  const total = chartNotes[difficulty]
-  const sum = counts.perfect + counts.great + counts.good + counts.miss
-  if (sum !== total) return `counts add up to ${sum}, but this chart has ${total} notes`
-  if (!isWhole(maxCombo) || maxCombo > total - counts.miss) return 'max combo is impossible for these counts'
-  return { slug, difficulty, counts, maxCombo, cleared: body['cleared'] === true }
+  const notes = isString(slug) ? chartNotes.get(slug) : undefined
+  if (!isString(slug) || notes === undefined) return refuse(400, 'unknown song')
+  if (!isDifficulty(difficulty)) return refuse(400, 'unknown difficulty')
+  if (!isCounts(counts)) return refuse(400, 'counts must be whole numbers')
+  const total = notes[difficulty]
+  const judged = counts.perfect + counts.great + counts.good + counts.miss
+  if (judged !== total) return refuse(400, `counts add up to ${judged}, but this chart has ${total} notes`)
+  if (!isWhole(maxCombo) || maxCombo > total - counts.miss) return refuse(400, 'max combo is impossible for these counts')
+  return { slug, difficulty, counts, maxCombo, cleared: body['cleared'] === true, notes: total }
+}
+
+export function placeOnBoard(board: readonly ScoreRow[], row: ScoreRow): { readonly board: ScoreRow[]; readonly rank: number | null } {
+  const held = board.find((r) => r.user === row.user)
+  const entries = held !== undefined && held.score >= row.score ? board : [...board.filter((r) => r.user !== row.user), row]
+  const next = entries.toSorted((a, b) => b.score - a.score || a.at.localeCompare(b.at)).slice(0, BOARD_SIZE)
+  const rank = next.findIndex((r) => r.user === row.user) + 1
+  return { board: next, rank: rank === 0 ? null : rank }
+}
+
+function settingsFrom(body: Record<string, unknown>, current: Settings): Settings {
+  const offsetMs = Number(body['offsetMs'] ?? current.offsetMs)
+  const speed = Number(body['speed'] ?? current.speed)
+  if (!Number.isFinite(offsetMs) || Math.abs(offsetMs) > OFFSET_LIMIT_MS) return refuse(400, `Offset must be within ±${OFFSET_LIMIT_MS} ms`)
+  if (!Number.isFinite(speed) || speed < SPEED.min || speed > SPEED.max) return refuse(400, `Speed must be ${SPEED.min}–${SPEED.max}`)
+  return { offsetMs: Math.round(offsetMs), speed: Math.round(speed / SPEED.step) * SPEED.step }
 }
 
 async function credentials(req: Request) {
   const { username, password } = await bodyOf(req)
-  if (!isString(username) || !USERNAME.test(username)) return 'Username: 3-20 letters, numbers, _ or -'
-  if (!isString(password) || password.length < 8) return 'Password: at least 8 characters'
+  if (!isString(username) || !USERNAME.test(username)) return refuse(400, 'Username: 3-20 letters, numbers, _ or -')
+  if (!isString(password) || password.length < MIN_PASSWORD_LENGTH) return refuse(400, `Password: at least ${MIN_PASSWORD_LENGTH} characters`)
   return { username, password }
 }
 
-const signedIn = async (ctx: Context, user: User, status: number) =>
+const signIn = async (ctx: Context, user: User, status: number) =>
   json({ name: user.name, settings: user.settings }, status, { 'set-cookie': await sessionCookie(ctx.secret, user.name, ctx.secure) })
 
-const signup: PublicRoute = async (ctx) => {
-  const creds = await credentials(ctx.req)
-  if (isString(creds)) return fail(400, creds)
-  if (isUser(await ctx.store.get(userKey(creds.username)))) return fail(409, 'That name is taken')
-  const user = await newUser(creds.username, creds.password, DEFAULT_SETTINGS)
-  await ctx.store.set(userKey(user.name), user)
-  return signedIn(ctx, user, 201)
+const signedIn = (run: (ctx: Context, user: User) => Promise<Response>) => async (ctx: Context) => {
+  const name = await sessionUser(ctx.req, ctx.secret)
+  const user = name === null ? null : await ctx.store.get(keys.user(name))
+  return isUser(user) ? run(ctx, user) : refuse(401, 'Sign in first')
 }
 
-const login: PublicRoute = async (ctx) => {
-  const creds = await credentials(ctx.req)
-  if (isString(creds)) return fail(400, creds)
-  const user = await ctx.store.get(userKey(creds.username))
-  if (!isUser(user) || (await hashPassword(creds.password, user.salt)) !== user.hash) return fail(401, 'Wrong username or password')
-  return signedIn(ctx, user, 200)
+async function signup(ctx: Context) {
+  const { username, password } = await credentials(ctx.req)
+  if (isUser(await ctx.store.get(keys.user(username)))) return refuse(409, 'That name is taken')
+  const user = await newUser(username, password, DEFAULT_SETTINGS)
+  await ctx.store.set(keys.user(user.name), user)
+  return signIn(ctx, user, 201)
 }
 
-const logout: PublicRoute = () => json({ ok: true }, 200, { 'set-cookie': CLEAR_COOKIE })
+async function login(ctx: Context) {
+  const { username, password } = await credentials(ctx.req)
+  const user = await ctx.store.get(keys.user(username))
+  if (!isUser(user) || !(await passwordMatches(password, user))) return refuse(401, 'Wrong username or password')
+  return signIn(ctx, user, 200)
+}
 
-const session: PublicRoute = async (ctx) => json({ signedIn: (await sessionUser(ctx.req, ctx.secret)) !== null })
+const logout = () => Promise.resolve(json({ ok: true }, 200, { 'set-cookie': CLEAR_COOKIE }))
 
-const leaderboard: PublicRoute = async (ctx, [slug = '', difficulty = '']) => json(await read(ctx.store, boardKey(slug, difficulty), isRows, []))
+const session = async (ctx: Context) => json({ signedIn: (await sessionUser(ctx.req, ctx.secret)) !== null })
 
-const me: PrivateRoute = async (ctx, user) => json({
-  name: user.name,
-  settings: user.settings,
-  bests: await read(ctx.store, bestsKey(user.name), isBests, {}),
-  history: (await read(ctx.store, historyKey(user.name), isRows, [])).slice(0, HISTORY_SHOWN),
+async function leaderboard(ctx: Context) {
+  const [slug = '', difficulty] = ctx.params
+  if (!isDifficulty(difficulty)) return refuse(404, 'No such route')
+  return json(await read(ctx.store, keys.board(slug, difficulty), isRows, []))
+}
+
+const me = signedIn(async (ctx, user) =>
+  json({
+    name: user.name,
+    settings: user.settings,
+    bests: await read(ctx.store, keys.bests(user.name), isBests, {}),
+    history: (await read(ctx.store, keys.history(user.name), isRows, [])).slice(0, HISTORY_SHOWN),
+  }),
+)
+
+const settings = signedIn(async (ctx, user) => {
+  const next = settingsFrom(await bodyOf(ctx.req), user.settings)
+  await ctx.store.set(keys.user(user.name), { ...user, settings: next })
+  return json(next)
 })
 
-function settingsFrom(body: Record<string, unknown>, current: Settings): Settings | string {
-  const offsetMs = Number(body['offsetMs'] ?? current.offsetMs)
-  const speed = Number(body['speed'] ?? current.speed)
-  if (!Number.isFinite(offsetMs) || Math.abs(offsetMs) > 300) return 'Offset must be within ±300 ms'
-  if (!Number.isFinite(speed) || speed < 0.25 || speed > 3) return 'Speed must be 0.25–3'
-  return { offsetMs: Math.round(offsetMs), speed: Math.round(speed * 20) / 20 }
-}
-
-const settings: PrivateRoute = async (ctx, user) => {
-  const next = settingsFrom(await bodyOf(ctx.req), user.settings)
-  if (isString(next)) return fail(400, next)
-  await ctx.store.set(userKey(user.name), { ...user, settings: next })
-  return json(next)
-}
-
-async function rankOnBoard(store: Store, row: ScoreRow, personalBest: boolean, best: ScoreRow) {
-  const key = boardKey(row.slug, row.difficulty)
-  const board = (await read(store, key, isRows, [])).filter((r) => r.user !== row.user || !personalBest)
-  if (personalBest) board.push(row)
-  const top = board.toSorted((a, b) => b.score - a.score || a.at.localeCompare(b.at)).slice(0, BOARD_SIZE)
-  await store.set(key, top)
-  const rank = top.findIndex((r) => r.user === row.user && r.score === best.score) + 1
-  return rank === 0 ? null : rank
-}
-
-const submit: PrivateRoute = async (ctx, user) => {
-  const sub = validateSubmission(await bodyOf(ctx.req))
-  if (isString(sub)) return fail(400, sub)
-  const total = noteCounts.get(sub.slug)?.[sub.difficulty] ?? 0
-  const row: ScoreRow = { ...sub, user: user.name, ...scoreOf(sub.counts, total), at: new Date().toISOString() }
-  const history = await read(ctx.store, historyKey(user.name), isRows, [])
-  await ctx.store.set(historyKey(user.name), [row, ...history].slice(0, HISTORY_SIZE))
-  const bests = await read(ctx.store, bestsKey(user.name), isBests, {})
-  const key = `${sub.slug}/${sub.difficulty}`
-  const previous = bests[key]
+const submit = signedIn(async (ctx, user) => {
+  const { notes, ...submission } = submissionOf(await bodyOf(ctx.req))
+  const row: ScoreRow = { ...submission, user: user.name, ...scoreOf(submission.counts, notes), at: new Date().toISOString() }
+  const history = await read(ctx.store, keys.history(user.name), isRows, [])
+  await ctx.store.set(keys.history(user.name), [row, ...history].slice(0, HISTORY_KEPT))
+  const bests = await read(ctx.store, keys.bests(user.name), isBests, {})
+  const previous = bests[chartOf(row)]
   const personalBest = previous === undefined || row.score > previous.score
-  if (personalBest) await ctx.store.set(bestsKey(user.name), { ...bests, [key]: row })
-  const rank = await rankOnBoard(ctx.store, row, personalBest, personalBest ? row : previous)
-  return json({ row, personalBest, previousBest: personalBest ? null : previous, rank })
-}
+  if (personalBest) await ctx.store.set(keys.bests(user.name), { ...bests, [chartOf(row)]: row })
+  const placed = placeOnBoard(await read(ctx.store, keys.board(row.slug, row.difficulty), isRows, []), row)
+  await ctx.store.set(keys.board(row.slug, row.difficulty), placed.board)
+  return json({ row, personalBest, previousBest: personalBest ? null : previous, rank: placed.rank })
+})
 
-const PUBLIC: readonly (readonly [string, RegExp, PublicRoute])[] = [
-  ['POST', /^\/signup$/, signup],
-  ['POST', /^\/login$/, login],
-  ['POST', /^\/logout$/, logout],
-  ['GET', /^\/session$/, session],
-  ['GET', /^\/leaderboard\/([a-z0-9-]+)\/(easy|normal|hard)$/, leaderboard],
+const ROUTES: readonly Route[] = [
+  { method: 'POST', path: /^\/signup$/, run: signup },
+  { method: 'POST', path: /^\/login$/, run: login },
+  { method: 'POST', path: /^\/logout$/, run: logout },
+  { method: 'GET', path: /^\/session$/, run: session },
+  { method: 'GET', path: new RegExp(`^/leaderboard/([a-z0-9-]+)/(${DIFFICULTIES.join('|')})$`), run: leaderboard },
+  { method: 'GET', path: /^\/me$/, run: me },
+  { method: 'PUT', path: /^\/me\/settings$/, run: settings },
+  { method: 'POST', path: /^\/scores$/, run: submit },
 ]
 
-const PRIVATE: readonly (readonly [string, RegExp, PrivateRoute])[] = [
-  ['GET', /^\/me$/, me],
-  ['PUT', /^\/me\/settings$/, settings],
-  ['POST', /^\/scores$/, submit],
-]
-
-async function currentUser(ctx: Context): Promise<User | null> {
-  const name = await sessionUser(ctx.req, ctx.secret)
-  if (name === null) return null
-  const user = await ctx.store.get(userKey(name))
-  return isUser(user) ? user : null
+async function answered(response: Promise<Response>): Promise<Response> {
+  try {
+    return await response
+  } catch (error) {
+    if (error instanceof Refusal) return json({ error: error.message }, error.status)
+    throw error
+  }
 }
 
-export async function handle(req: Request, store: Store, secret: string): Promise<Response> {
+export function handle(req: Request, store: Store, secret: string): Promise<Response> {
   const url = new URL(req.url)
-  const ctx: Context = { req, store, secret, secure: url.protocol === 'https:' }
   const path = url.pathname.replace(/^\/api/, '')
-  const open = PUBLIC.map(([method, pattern, route]) => ({ route, match: req.method === method ? pattern.exec(path) : null })).find((r) => r.match !== null)
-  if (open !== undefined && open.match !== null) return open.route(ctx, open.match.slice(1))
-  const route = PRIVATE.find(([method, pattern]) => req.method === method && pattern.test(path))?.[2]
-  if (route === undefined) return fail(404, 'No such route')
-  const user = await currentUser(ctx)
-  return user === null ? fail(401, 'Sign in first') : route(ctx, user)
+  for (const route of ROUTES) {
+    const match = req.method === route.method ? route.path.exec(path) : null
+    if (match !== null) return answered(route.run({ req, store, secret, secure: url.protocol === 'https:', params: match.slice(1) }))
+  }
+  return Promise.resolve(json({ error: 'No such route' }, 404))
 }

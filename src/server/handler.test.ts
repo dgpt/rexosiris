@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import index from '../shared/chart-index.json'
-import { handle, type Store } from './handler'
+import index from '../../public/charts/index.json'
+import { handle, placeOnBoard, type Store } from './handler'
 
 const memStore = (): Store => {
   const m = new Map<string, unknown>()
@@ -105,5 +105,43 @@ describe('scores', () => {
 
   test('submitting needs a signed-in player', async () => {
     expect((await client().req('POST', '/scores', { slug: song.slug, difficulty: 'easy', counts: counts(easy, 0), maxCombo: easy, cleared: true })).status).toBe(401)
+  })
+})
+
+describe('what the server will not quietly accept', () => {
+  test('a body that is not a JSON object is refused, not read as empty', async () => {
+    const res = await handle(new Request('http://x/api/signup', { method: 'POST', body: 'username=spencer' }), client().store, 'test-secret')
+    expect(res.status).toBe(400)
+  })
+
+  test('a stored leaderboard in the wrong shape is an error, not an empty board', async () => {
+    const c = client()
+    await c.store.set(`board/${song.slug}/easy`, [{ user: 'spencer', score: 'lots' }])
+    const failure = await handle(new Request(`http://x/api/leaderboard/${song.slug}/easy`), c.store, 'test-secret').then(
+      () => 'answered',
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    )
+    expect(failure).toContain('not in the shape')
+  })
+})
+
+describe('the leaderboard keeps one row per player, best first', () => {
+  const row = (user: string, score: number, at = '2026-10-30T00:00:00Z') =>
+    ({ user, score, at, slug: song.slug, difficulty: 'easy' as const, counts: counts(easy, 0), maxCombo: easy, cleared: true, accuracy: 1, grade: 'S' })
+
+  test('a worse run leaves the board as it was and reports the standing best', () => {
+    const board = [row('rival', 900), row('spencer', 800)]
+    expect(placeOnBoard(board, row('spencer', 700))).toEqual({ board, rank: 2 })
+  })
+
+  test('a better run replaces the old row and moves up', () => {
+    const placed = placeOnBoard([row('rival', 900), row('spencer', 800)], row('spencer', 950))
+    expect(placed.board.map((r) => [r.user, r.score])).toEqual([['spencer', 950], ['rival', 900]])
+    expect(placed.rank).toBe(1)
+  })
+
+  test('on a tie the earlier run ranks first', () => {
+    const placed = placeOnBoard([row('rival', 900, '2026-10-30T01:00:00Z')], row('spencer', 900, '2026-10-30T00:00:00Z'))
+    expect(placed.board.map((r) => r.user)).toEqual(['spencer', 'rival'])
   })
 })
